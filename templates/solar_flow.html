@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Solar Energy System Monitor</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/solar-panel.svg') }}">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -241,11 +242,6 @@
                 <span id="grid-pill-label">Grid</span>
             </span>
         </div>
-        <button onclick="dashboard.requestManualUpdate()"
-                class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
-            <i class="fas fa-sync-alt mr-2" id="refresh-icon"></i>
-            Refresh
-        </button>
     </div>
 
     <!-- Warnings Banner -->
@@ -296,8 +292,8 @@
                 <!-- Grid: top-left -->
                 <div id="grid-component" class="flow-node grid">
                     <div class="info">
-                        <span class="v"><span id="grid-voltage">0</span>V</span>
-                        <span class="m"><span id="grid-frequency">0</span>Hz</span>
+                        <span class="v"><span id="grid-voltage">0</span> V</span>
+                        <span class="m"><span id="grid-frequency">0</span> Hz</span>
                     </div>
                     <img src="{{ url_for('static', filename='icons/grid.svg') }}" alt="Grid" class="flow-icon">
                     <span class="status-indicator status-inactive" id="grid-status"></span>
@@ -306,9 +302,8 @@
                 <!-- Load: top-right -->
                 <div id="load-component" class="flow-node load">
                     <div class="info">
-                        <span class="v"><span id="load-voltage">0</span>V</span>
-                        <span class="v"><span id="load-power">0</span>W</span>
-                        <span class="m"><span id="load-percentage">0</span>%</span>
+                        <span class="v"><span id="load-power">0</span> W</span>
+                        <span class="m"><span id="load-voltage">0</span> V · <span id="load-percentage">0</span>%</span>
                     </div>
                     <img src="{{ url_for('static', filename='icons/load.svg') }}" alt="Load" class="flow-icon">
                     <span class="status-indicator status-inactive" id="load-status"></span>
@@ -324,8 +319,8 @@
                 <!-- Solar: bottom-left -->
                 <div id="solar-component" class="flow-node solar">
                     <div class="info">
-                        <span class="v"><span id="solar-voltage">0</span>V</span>
-                        <span class="v"><span id="solar-power">0</span>W</span>
+                        <span class="v"><span id="solar-power">0</span> W</span>
+                        <span class="m"><span id="solar-voltage">0</span> V</span>
                     </div>
                     <img src="{{ url_for('static', filename='icons/solar-panel.svg') }}" alt="Solar" class="flow-icon solar-tilt">
                     <span class="status-indicator status-inactive" id="solar-status"></span>
@@ -334,8 +329,8 @@
                 <!-- Battery: bottom-right -->
                 <div id="battery-component" class="flow-node battery">
                     <div class="info">
-                        <span class="v"><span id="battery-voltage">0</span>V</span>
                         <span class="v"><span id="battery-percentage">0</span>%</span>
+                        <span class="m"><span id="battery-voltage">0</span> V</span>
                     </div>
                     <div class="battery-svg-wrapper">
                         <svg class="battery-svg" viewBox="0 0 60 88" xmlns="http://www.w3.org/2000/svg">
@@ -369,6 +364,10 @@
                     </div>
                 </div>
             </div>
+            <p class="text-white/40 text-xs text-center mt-2">
+                <i class="fas fa-hand-pointer mr-1"></i>
+                Tap any component for details and settings
+            </p>
 
             <!-- Live Power Cards -->
             <div class="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -499,14 +498,6 @@
                 </div>
             </div>
 
-            <!-- System Status Pill -->
-            <div class="mt-6 text-center">
-                <div class="inline-flex items-center space-x-2 bg-green-500/20 text-green-300 px-4 py-2 rounded-full" id="system-status-pill">
-                    <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                    <span class="font-medium">System Status: <span id="system-status">Monitoring</span></span>
-                </div>
-            </div>
-
             <!-- Live Power Chart -->
             <div class="mt-8 bg-white/10 backdrop-blur-sm rounded-lg p-6">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
@@ -570,6 +561,7 @@
                 maintainAspectRatio: false,
                 animation: false,
                 parsing: false,
+                spanGaps: false,
                 interaction: { mode: 'nearest', axis: 'x', intersect: false },
                 plugins: {
                     legend: {

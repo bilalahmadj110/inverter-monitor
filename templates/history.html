@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reports · Solar Energy System Monitor</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/solar-panel.svg') }}">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -27,6 +28,22 @@
         /* Tweak the native date/month clear + picker indicators for dark backgrounds */
         input[type="date"]::-webkit-calendar-picker-indicator,
         input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(0.7); cursor: pointer; }
+
+        /* Tab status indicator (loading / error / empty) */
+        .tab-status {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            font-size: 0.72rem; padding: 0.2rem 0.55rem; border-radius: 999px;
+            margin-left: 0.5rem; vertical-align: middle;
+            transition: opacity 0.2s ease;
+        }
+        .tab-status.loading { background: rgba(96,165,250,0.15); color: #bfdbfe; border: 1px solid rgba(96,165,250,0.3); }
+        .tab-status.error   { background: rgba(239, 68, 68,0.15); color: #fecaca; border: 1px solid rgba(239, 68, 68,0.3); }
+        .tab-status.empty   { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.15); }
+        .panel-loading { opacity: 0.55; transition: opacity 0.2s ease; }
+
+        /* Active outage preset */
+        .out-preset.active { background-color: rgb(37 99 235); color: #fff; }
+        .out-preset.active:hover { background-color: rgb(29 78 216); }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">
@@ -47,7 +64,10 @@
 
     <!-- Header -->
     <div class="max-w-6xl mx-auto px-4 py-6">
-        <h1 class="text-3xl font-bold text-white mb-1">Reports</h1>
+        <h1 class="text-3xl font-bold text-white mb-1 flex items-center">
+            Reports
+            <span id="tab-status" class="tab-status" style="display:none"></span>
+        </h1>
         <p class="text-blue-200 text-sm">Historical power and energy analytics</p>
     </div>
 
@@ -236,6 +256,40 @@
         function isoDate(d) { return d.toISOString().slice(0, 10); }
         function todayStr() { return isoDate(new Date()); }
         function monthStr(d) { return d.toISOString().slice(0, 7); }
+
+        // Simple shared status pill + panel dim for the active tab.
+        const statusEl = document.getElementById('tab-status');
+        function showStatus(kind, text, timeout) {
+            if (!statusEl) return;
+            statusEl.className = `tab-status ${kind}`;
+            statusEl.innerHTML = (kind === 'loading'
+                ? '<i class="fas fa-circle-notch fa-spin"></i>'
+                : kind === 'error' ? '<i class="fas fa-triangle-exclamation"></i>'
+                : '<i class="fas fa-circle-info"></i>') + `<span>${text}</span>`;
+            statusEl.style.display = '';
+            if (timeout) setTimeout(() => { if (statusEl.classList.contains(kind)) statusEl.style.display = 'none'; }, timeout);
+        }
+        function hideStatus() { if (statusEl) statusEl.style.display = 'none'; }
+        function activePanel() { return document.querySelector('[data-panel]:not(.hidden)'); }
+        function setPanelBusy(busy) {
+            const p = activePanel();
+            if (p) p.classList.toggle('panel-loading', !!busy);
+        }
+        async function withStatus(loadingText, fn) {
+            showStatus('loading', loadingText);
+            setPanelBusy(true);
+            try {
+                const result = await fn();
+                hideStatus();
+                return result;
+            } catch (err) {
+                console.error(err);
+                showStatus('error', 'Failed to load · tap to retry', 5000);
+                throw err;
+            } finally {
+                setPanelBusy(false);
+            }
+        }
         function fmtDuration(seconds) {
             if (seconds < 60) return `${seconds}s`;
             const m = Math.floor(seconds / 60);
@@ -268,14 +322,14 @@
             type: 'line',
             data: {
                 datasets: [
-                    { label: 'Solar',   data: [], borderColor: palette.solar.border,   backgroundColor: palette.solar.fill,   fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
-                    { label: 'Grid',    data: [], borderColor: palette.grid.border,    backgroundColor: palette.grid.fill,    fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
-                    { label: 'Load',    data: [], borderColor: palette.load.border,    backgroundColor: palette.load.fill,    fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
-                    { label: 'Battery', data: [], borderColor: palette.battery.border, backgroundColor: palette.battery.fill, fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2, borderDash: [6, 4] },
+                    { label: 'Solar',   data: [], borderColor: palette.solar.border,   fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25 },
+                    { label: 'Grid',    data: [], borderColor: palette.grid.border,    fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25 },
+                    { label: 'Load',    data: [], borderColor: palette.load.border,    fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25 },
+                    { label: 'Battery', data: [], borderColor: palette.battery.border, fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25, borderDash: [6, 4] },
                 ],
             },
             options: {
-                responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+                responsive: true, maintainAspectRatio: false, animation: false, parsing: false, spanGaps: false,
                 interaction: { mode: 'nearest', axis: 'x', intersect: false },
                 plugins: {
                     legend: { labels: { color: '#E5E7EB' } },
@@ -305,14 +359,30 @@
             },
         });
 
+        // Insert { x, y: null } entries where two consecutive points are farther apart than
+        // `gapMs`, so Chart.js breaks the line (e.g. across a restart/outage).
+        function withGaps(series, gapMs) {
+            if (series.length < 2) return series;
+            const out = [];
+            for (let i = 0; i < series.length; i++) {
+                out.push(series[i]);
+                if (i < series.length - 1) {
+                    const dt = series[i + 1].x - series[i].x;
+                    if (dt > gapMs) out.push({ x: series[i].x + dt / 2, y: null });
+                }
+            }
+            return out;
+        }
+
         async function loadDay(date) {
             if (!date) date = todayStr();
             document.getElementById('day-date').value = date;
-            try {
+            await withStatus('Loading day…', async () => {
                 const [summaryRes, readingsRes] = await Promise.all([
                     fetch(`/summary?date=${date}`),
                     fetch(`/day-readings?date=${date}&bucket=60`),
                 ]);
+                if (!summaryRes.ok || !readingsRes.ok) throw new Error('Request failed');
                 const s = await summaryRes.json();
                 const r = await readingsRes.json();
 
@@ -324,19 +394,22 @@
                 document.getElementById('day-selfsuff').textContent = Math.round((s.self_sufficiency || 0) * 100);
 
                 const points = r.points || [];
+                const bucketMs = ((r && r.bucket_seconds) || 60) * 1000;
+                const gapMs = Math.max(120000, bucketMs * 3);
                 const peak = (key) => points.reduce((m, p) => Math.max(m, p[key] || 0), 0);
                 document.getElementById('day-solar-peak').textContent = Math.round(peak('solar_power'));
                 document.getElementById('day-grid-peak').textContent = Math.round(peak('grid_power'));
                 document.getElementById('day-load-peak').textContent = Math.round(peak('load_power'));
 
-                dayChart.data.datasets[0].data = points.map((p) => ({ x: p.timestamp * 1000, y: p.solar_power }));
-                dayChart.data.datasets[1].data = points.map((p) => ({ x: p.timestamp * 1000, y: p.grid_power }));
-                dayChart.data.datasets[2].data = points.map((p) => ({ x: p.timestamp * 1000, y: p.load_power }));
-                dayChart.data.datasets[3].data = points.map((p) => ({ x: p.timestamp * 1000, y: p.battery_power }));
+                const toSeries = (key) => withGaps(points.map((p) => ({ x: p.timestamp * 1000, y: p[key] })), gapMs);
+                dayChart.data.datasets[0].data = toSeries('solar_power');
+                dayChart.data.datasets[1].data = toSeries('grid_power');
+                dayChart.data.datasets[2].data = toSeries('load_power');
+                dayChart.data.datasets[3].data = toSeries('battery_power');
                 dayChart.update('none');
-            } catch (err) {
-                console.error('Failed to load day', err);
-            }
+
+                if (points.length === 0) showStatus('empty', 'No readings for this day', 4000);
+            }).catch(() => {});
         }
 
         document.getElementById('day-date').addEventListener('change', (e) => loadDay(e.target.value));
@@ -377,11 +450,12 @@
         async function loadMonth(monthVal) {
             if (!monthVal) monthVal = monthStr(new Date());
             document.getElementById('month-input').value = monthVal;
-            try {
+            await withStatus('Loading month…', async () => {
                 const [monthRes, historyRes] = await Promise.all([
                     fetch(`/stats?period=month&month=${monthVal}`),
                     fetch('/history?days=365'),
                 ]);
+                if (!monthRes.ok || !historyRes.ok) throw new Error('Request failed');
                 const m = await monthRes.json();
                 const hist = await historyRes.json();
 
@@ -397,9 +471,9 @@
                 monthChart.data.datasets[1].data = rows.map((r) => r.grid_energy);
                 monthChart.data.datasets[2].data = rows.map((r) => r.load_energy);
                 monthChart.update();
-            } catch (err) {
-                console.error('Failed to load month', err);
-            }
+
+                if (rows.length === 0) showStatus('empty', 'No data for this month', 4000);
+            }).catch(() => {});
         }
 
         document.getElementById('month-input').addEventListener('change', (e) => loadMonth(e.target.value));
@@ -408,9 +482,10 @@
         const yearChart = new Chart(document.getElementById('year-chart'), {
             type: 'bar',
             data: { labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], datasets: [
-                { label: 'Solar', data: Array(12).fill(0), backgroundColor: palette.solar.border },
-                { label: 'Grid',  data: Array(12).fill(0), backgroundColor: palette.grid.border },
-                { label: 'Load',  data: Array(12).fill(0), backgroundColor: palette.load.border },
+                { label: 'Solar',   data: Array(12).fill(0), backgroundColor: palette.solar.border },
+                { label: 'Grid',    data: Array(12).fill(0), backgroundColor: palette.grid.border },
+                { label: 'Load',    data: Array(12).fill(0), backgroundColor: palette.load.border },
+                { label: 'Battery', data: Array(12).fill(0), backgroundColor: palette.battery.border },
             ] },
             options: {
                 responsive: true, maintainAspectRatio: false,
@@ -433,11 +508,12 @@
         async function loadYear(yearVal) {
             const year = yearVal || String(new Date().getFullYear());
             document.getElementById('year-input').value = year;
-            try {
+            await withStatus('Loading year…', async () => {
                 const [yearRes, historyRes] = await Promise.all([
                     fetch(`/stats?period=year&year=${year}`),
                     fetch('/history?days=365'),
                 ]);
+                if (!yearRes.ok || !historyRes.ok) throw new Error('Request failed');
                 const y = await yearRes.json();
                 const hist = await historyRes.json();
 
@@ -447,20 +523,23 @@
                 document.getElementById('yr-bat-charge').textContent = ((y.battery_charge_energy || 0) / 1000).toFixed(2);
                 document.getElementById('yr-bat-discharge').textContent = ((y.battery_discharge_energy || 0) / 1000).toFixed(2);
 
-                const monthlyTotals = Array.from({ length: 12 }, () => ({ solar: 0, grid: 0, load: 0 }));
-                hist.filter((r) => r.date.startsWith(year)).forEach((r) => {
+                const monthlyTotals = Array.from({ length: 12 }, () => ({ solar: 0, grid: 0, load: 0, battery: 0 }));
+                const yearRows = hist.filter((r) => r.date.startsWith(year));
+                yearRows.forEach((r) => {
                     const m = parseInt(r.date.slice(5, 7), 10) - 1;
                     monthlyTotals[m].solar += r.solar_energy;
                     monthlyTotals[m].grid  += r.grid_energy;
                     monthlyTotals[m].load  += r.load_energy;
+                    monthlyTotals[m].battery += (r.battery_charge_energy || 0);
                 });
                 yearChart.data.datasets[0].data = monthlyTotals.map((x) => +x.solar.toFixed(2));
                 yearChart.data.datasets[1].data = monthlyTotals.map((x) => +x.grid.toFixed(2));
                 yearChart.data.datasets[2].data = monthlyTotals.map((x) => +x.load.toFixed(2));
+                yearChart.data.datasets[3].data = monthlyTotals.map((x) => +x.battery.toFixed(2));
                 yearChart.update();
-            } catch (err) {
-                console.error('Failed to load year', err);
-            }
+
+                if (yearRows.length === 0) showStatus('empty', 'No data for this year', 4000);
+            }).catch(() => {});
         }
 
         document.getElementById('year-input').addEventListener('change', (e) => loadYear(e.target.value));
@@ -469,8 +548,9 @@
         async function loadOutages() {
             const from = document.getElementById('out-from').value;
             const to = document.getElementById('out-to').value;
-            try {
+            await withStatus('Loading outages…', async () => {
                 const res = await fetch(`/outages?from=${from}&to=${to}`);
+                if (!res.ok) throw new Error('Request failed');
                 const data = await res.json();
                 document.getElementById('out-count').textContent = data.count || 0;
                 document.getElementById('out-total').textContent = ((data.total_down_seconds || 0) / 3600).toFixed(2);
@@ -479,6 +559,7 @@
                 const list = document.getElementById('out-list');
                 if (!data.outages || data.outages.length === 0) {
                     list.innerHTML = '<tr><td colspan="3" class="text-center text-white/50 py-6">No outages in this range</td></tr>';
+                    showStatus('empty', 'No outages found', 4000);
                     return;
                 }
                 list.innerHTML = data.outages.map((o) => `
@@ -488,9 +569,7 @@
                         <td class="py-2 px-2 text-right">${fmtDuration(o.duration_seconds)}</td>
                     </tr>
                 `).join('');
-            } catch (err) {
-                console.error('Failed to load outages', err);
-            }
+            }).catch(() => {});
         }
 
         function setOutRange(days) {
@@ -499,9 +578,16 @@
             from.setDate(from.getDate() - days + 1);
             document.getElementById('out-from').value = isoDate(from);
             document.getElementById('out-to').value = isoDate(to);
+            document.querySelectorAll('.out-preset').forEach((b) => {
+                b.classList.toggle('active', Number(b.dataset.days) === days);
+            });
             loadOutages();
         }
-        document.getElementById('out-apply').addEventListener('click', loadOutages);
+        document.getElementById('out-apply').addEventListener('click', () => {
+            // A custom date range invalidates the preset selection.
+            document.querySelectorAll('.out-preset').forEach((b) => b.classList.remove('active'));
+            loadOutages();
+        });
         document.querySelectorAll('.out-preset').forEach((b) => {
             b.addEventListener('click', () => setOutRange(Number(b.dataset.days)));
         });
