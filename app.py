@@ -6,7 +6,10 @@ import os
 import logging
 import power_stats
 from continuous_reader import ContinuousReader
-from inverter_status import set_output_priority, OUTPUT_PRIORITY_COMMANDS
+from inverter_status import (
+    set_output_priority, set_charger_priority,
+    OUTPUT_PRIORITY_COMMANDS, CHARGER_PRIORITY_COMMANDS,
+)
 
 ADMIN_PASSWORD = os.environ.get('INVERTER_ADMIN_PASSWORD', '').strip()
 
@@ -156,39 +159,50 @@ def recompute_daily():
 
 @app.route('/config')
 def get_config():
-    """Current inverter config (output priority, charger priority, battery thresholds, etc.)."""
+    """Current inverter config (output priority, charger priority, battery thresholds, etc.).
+    Forces a fresh QPIRI read if the cache is empty so the UI can recover without a full reload."""
+    cfg = continuous_reader.get_config()
+    if not cfg and request.args.get('refresh') != '0':
+        cfg = continuous_reader.refresh_config() or {}
     return jsonify({
-        'config': continuous_reader.get_config(),
+        'config': cfg,
         'output_priority_options': [{'key': k, 'label': v[1]} for k, v in OUTPUT_PRIORITY_COMMANDS.items()],
+        'charger_priority_options': [{'key': k, 'label': v[1]} for k, v in CHARGER_PRIORITY_COMMANDS.items()],
         'password_required': bool(ADMIN_PASSWORD),
     })
+
+
+def _apply_config_change(setter, mode_raw, label_key):
+    body = request.get_json(silent=True) or {}
+    mode = (mode_raw or body.get('mode') or request.args.get('mode') or '').upper()
+    supplied_pw = body.get('password') or request.headers.get('X-Admin-Password') or ''
+    if ADMIN_PASSWORD and supplied_pw != ADMIN_PASSWORD:
+        logger.warning(f"Unauthorized config change attempt ({label_key}, mode={mode})")
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        before = continuous_reader.get_config().get(label_key)
+        result = setter(mode)
+        logger.info(f"{label_key} changed: {before} -> {mode} (command={result['command']})")
+        time.sleep(1.5)
+        fresh = continuous_reader.refresh_config()
+        return jsonify({'success': True, 'previous': before, 'applied': result, 'config': fresh})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"{label_key} change failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/set-output-priority', methods=['POST'])
 def set_output_priority_route():
     body = request.get_json(silent=True) or {}
-    mode = (body.get('mode') or request.args.get('mode') or '').upper()
-    supplied_pw = body.get('password') or request.headers.get('X-Admin-Password') or ''
-    if ADMIN_PASSWORD and supplied_pw != ADMIN_PASSWORD:
-        logger.warning(f"Unauthorized set-output-priority attempt (mode={mode})")
-        return jsonify({'error': 'Unauthorized'}), 401
-    try:
-        before = continuous_reader.get_config().get('output_priority')
-        result = set_output_priority(mode)
-        logger.info(f"Output priority changed: {before} -> {mode} (command={result['command']})")
-        time.sleep(1.5)  # Give the inverter a moment before re-reading
-        fresh = continuous_reader.refresh_config()
-        return jsonify({
-            'success': True,
-            'previous': before,
-            'applied': result,
-            'config': fresh,
-        })
-    except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
-    except Exception as e:
-        logger.error(f"set_output_priority failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return _apply_config_change(set_output_priority, body.get('mode'), 'output_priority')
+
+
+@app.route('/set-charger-priority', methods=['POST'])
+def set_charger_priority_route():
+    body = request.get_json(silent=True) or {}
+    return _apply_config_change(set_charger_priority, body.get('mode'), 'charger_priority')
 
 
 @app.route('/reports')

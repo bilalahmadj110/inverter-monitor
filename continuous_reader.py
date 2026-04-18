@@ -72,7 +72,14 @@ class ContinuousReader:
         with self._extras_lock:
             return dict(self._config)
 
-    def refresh_config(self):
+    def refresh_config(self, min_age_seconds=5.0):
+        """Refresh QPIRI config. If we refreshed within the last `min_age_seconds`,
+        return the cached value instead of re-querying — prevents thundering-herd
+        when multiple clients request /config simultaneously."""
+        with self._extras_lock:
+            age = time.time() - self._last_config_time
+            if self._config and age < min_age_seconds:
+                return dict(self._config)
         try:
             cfg = get_inverter_config()
             if cfg:
@@ -82,7 +89,8 @@ class ContinuousReader:
             return cfg
         except Exception as e:
             logger.warning(f"Config refresh failed: {e}")
-            return {}
+            with self._extras_lock:
+                return dict(self._config)
 
     def _extras_loop(self):
         """Slow poll for QMOD + QPIWS, plus QPIRI at a slower cadence. Non-fatal on failure."""

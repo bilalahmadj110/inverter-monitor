@@ -16,9 +16,14 @@ class SolarFlowDashboard {
             D: { label: 'Shutdown',     bg: 'bg-gray-600/30',    text: 'text-gray-100',    dot: 'bg-gray-300' },
         };
 
+        this.latestMetrics = {};
+        this.latestConfig = {};
+        this.passwordRequired = false;
+        this.currentModal = null;
+
         this.initializeSocketEvents();
         this.initializeWarningBanner();
-        this.initializePriorityPanel();
+        this.initializeComponentModals();
         this.startUpdateTimer();
     }
 
@@ -72,6 +77,8 @@ class SolarFlowDashboard {
     }
 
     updateMetrics(metrics) {
+        this.latestMetrics = metrics || {};
+        if (this.currentModal) this.rerenderCurrentModal();
         const solar = metrics.solar || {};
         const battery = metrics.battery || {};
         const grid = metrics.grid || {};
@@ -136,6 +143,8 @@ class SolarFlowDashboard {
     }
 
     updateSystemInfo(system, metrics) {
+        this.latestSystem = system || {};
+        if (this.currentModal === 'inverter') this.rerenderCurrentModal();
         if (system.temperature != null) {
             this.updateElement('inverter-temp', system.temperature);
             this.updateElement('system-temp', system.temperature);
@@ -253,62 +262,283 @@ class SolarFlowDashboard {
     }
 
     renderConfig(config) {
-        const pill = document.getElementById('priority-pill-label');
-        const current = document.getElementById('priority-current');
-        const p = (config && config.output_priority) || '—';
-        if (pill) pill.textContent = p;
-        if (current) current.textContent = config && config.output_priority_raw ? `${p} (${config.output_priority_raw})` : p;
+        this.latestConfig = config || {};
+        if (this.currentModal) this.rerenderCurrentModal();
     }
 
-    initializePriorityPanel() {
-        const pill = document.getElementById('priority-pill');
-        const panel = document.getElementById('priority-panel');
-        const closeBtn = document.getElementById('priority-close');
-        const status = document.getElementById('priority-status');
-        const pwWrap = document.getElementById('priority-password-wrap');
-        const pwInput = document.getElementById('priority-password');
-        if (!pill || !panel) return;
+    initializeComponentModals() {
+        this.loadConfig({ retries: 5 });
 
-        let passwordRequired = false;
-        fetch('/config').then((r) => r.json()).then((data) => {
-            passwordRequired = !!(data && data.password_required);
-            pwWrap.classList.toggle('hidden', !passwordRequired);
-            if (data && data.config) this.renderConfig(data.config);
-        }).catch(() => {});
+        const modal = document.getElementById('component-modal');
+        const card = document.getElementById('component-modal-card');
+        if (!modal || !card) return;
 
-        pill.addEventListener('click', () => panel.classList.toggle('hidden'));
-        closeBtn.addEventListener('click', () => panel.classList.add('hidden'));
-
-        document.querySelectorAll('.priority-btn').forEach((btn) => {
-            btn.addEventListener('click', async () => {
-                const mode = btn.dataset.prio;
-                const label = btn.querySelector('.font-semibold').textContent;
-                if (!confirm(`Set output priority to ${label}? This changes how the inverter routes power.`)) return;
-                status.textContent = 'Sending…';
-                status.className = 'text-xs text-white/70';
-                try {
-                    const body = { mode };
-                    if (passwordRequired) body.password = pwInput.value || '';
-                    const res = await fetch('/set-output-priority', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                    });
-                    const data = await res.json();
-                    if (!res.ok || data.error) {
-                        status.textContent = `Failed: ${data.error || res.statusText}`;
-                        status.className = 'text-xs text-red-300';
-                        return;
-                    }
-                    status.textContent = `Changed to ${data.applied.mode} · ${data.applied.label}`;
-                    status.className = 'text-xs text-emerald-300';
-                    if (data.config) this.renderConfig(data.config);
-                } catch (err) {
-                    status.textContent = `Error: ${err.message}`;
-                    status.className = 'text-xs text-red-300';
-                }
+        ['solar', 'grid', 'battery', 'load', 'inverter'].forEach((key) => {
+            const el = document.getElementById(`${key}-component`);
+            if (!el) return;
+            el.addEventListener('click', (e) => {
+                const t = e.target;
+                if (t && t.classList && t.classList.contains('status-indicator')) return;
+                this.openModal(key);
             });
         });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) this.closeModal();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this.closeModal();
+        });
+    }
+
+    openModal(component) {
+        this.currentModal = component;
+        this.rerenderCurrentModal();
+        document.getElementById('component-modal').classList.remove('hidden');
+        if (this.needsConfig(component) && !this.hasConfig()) {
+            this.loadConfig({ retries: 4 });
+        }
+    }
+
+    needsConfig(component) {
+        return component === 'battery' || component === 'load' || component === 'inverter';
+    }
+
+    hasConfig() {
+        const c = this.latestConfig || {};
+        return !!(c.output_priority || c.charger_priority || (c.rows && c.rows.length));
+    }
+
+    async loadConfig({ retries = 1, attempt = 0 } = {}) {
+        try {
+            const res = await fetch('/config');
+            const data = await res.json();
+            this.passwordRequired = !!(data && data.password_required);
+            if (data && data.config && Object.keys(data.config).length > 0) {
+                this.renderConfig(data.config);
+                return true;
+            }
+        } catch (err) {
+            // retry on next tick
+        }
+        if (attempt + 1 < retries) {
+            const delay = Math.min(3000, 600 * Math.pow(1.6, attempt));
+            setTimeout(() => this.loadConfig({ retries, attempt: attempt + 1 }), delay);
+        }
+        return false;
+    }
+
+    closeModal() {
+        this.currentModal = null;
+        document.getElementById('component-modal').classList.add('hidden');
+    }
+
+    rerenderCurrentModal() {
+        const card = document.getElementById('component-modal-card');
+        if (!card || !this.currentModal) return;
+        card.innerHTML = this.buildModalHTML(this.currentModal);
+        this.attachModalHandlers();
+    }
+
+    buildModalHTML(component) {
+        const m = this.latestMetrics || {};
+        const c = this.latestConfig || {};
+        const close = `<button class="modal-close text-white/60 hover:text-white ml-auto" aria-label="Close"><i class="fas fa-times text-lg"></i></button>`;
+
+        if (component === 'solar') {
+            const s = m.solar || {};
+            return `
+                <div class="modal-head"><div class="icon-ring" style="background: rgba(252,211,77,0.15); color: #FCD34D"><i class="fas fa-solar-panel text-xl"></i></div>
+                    <div><div class="text-white font-semibold">Solar (PV)</div><div class="text-white/50 text-xs">Live readings</div></div>${close}</div>
+                <div class="modal-body">
+                    <section><h3>Now</h3>
+                        <div class="stat-grid">
+                            <div class="stat-tile"><div class="k">Power</div><div class="v">${Math.round(s.power || 0)} W</div></div>
+                            <div class="stat-tile"><div class="k">Voltage</div><div class="v">${(s.voltage || 0).toFixed(1)} V</div></div>
+                            <div class="stat-tile"><div class="k">Current</div><div class="v">${(s.current || 0).toFixed(2)} A</div></div>
+                            <div class="stat-tile"><div class="k">To Battery</div><div class="v">${(s.pv_to_battery_current || 0).toFixed(2)} A</div></div>
+                        </div>
+                    </section>
+                    <section><h3>Notes</h3>
+                        <div class="text-white/60 text-sm">PV settings on this inverter are read-only. Output / charger routing is controlled from the <b>Load</b> and <b>Battery</b> panels.</div>
+                    </section>
+                </div>`;
+        }
+
+        if (component === 'grid') {
+            const g = m.grid || {};
+            return `
+                <div class="modal-head"><div class="icon-ring" style="background: rgba(96,165,250,0.15); color: #60A5FA"><i class="fas fa-plug text-xl"></i></div>
+                    <div><div class="text-white font-semibold">Grid</div><div class="text-white/50 text-xs">Utility input</div></div>${close}</div>
+                <div class="modal-body">
+                    <section><h3>Now</h3>
+                        <div class="stat-grid">
+                            <div class="stat-tile"><div class="k">Voltage</div><div class="v">${Math.round(g.voltage || 0)} V</div></div>
+                            <div class="stat-tile"><div class="k">Frequency</div><div class="v">${(g.frequency || 0).toFixed(1)} Hz</div></div>
+                            <div class="stat-tile"><div class="k">Power</div><div class="v">${Math.round(g.power || 0)} W</div></div>
+                            <div class="stat-tile"><div class="k">Status</div><div class="v">${g.in_use ? 'In use' : 'Idle / Backup'}</div></div>
+                        </div>
+                    </section>
+                    <section><h3>Notes</h3>
+                        <div class="text-white/60 text-sm">Grid-related write operations (input voltage range, AC charging current) aren't exposed yet. The readings above are live from the inverter.</div>
+                    </section>
+                </div>`;
+        }
+
+        if (component === 'load') {
+            const l = m.load || {};
+            const current = c.output_priority || '—';
+            const opts = [
+                { key: 'SBU', name: 'SBU', desc: 'Solar → Battery → Grid' },
+                { key: 'SOL', name: 'SOL', desc: 'Solar → Grid → Battery' },
+                { key: 'UTI', name: 'UTI', desc: 'Grid first (battery / solar backup)' },
+            ];
+            const choices = opts.map((o) => `
+                <button class="choice-btn ${current === o.key ? 'current' : ''}" data-action="set-output-priority" data-mode="${o.key}">
+                    <div class="name">${o.name}${current === o.key ? '<i class="fas fa-check text-emerald-400 text-xs ml-1"></i>' : ''}</div>
+                    <div class="desc">${o.desc}</div>
+                </button>`).join('');
+            return `
+                <div class="modal-head"><div class="icon-ring" style="background: rgba(167,139,250,0.15); color: #A78BFA"><i class="fas fa-house text-xl"></i></div>
+                    <div><div class="text-white font-semibold">Load (Output)</div><div class="text-white/50 text-xs">House consumption</div></div>${close}</div>
+                <div class="modal-body">
+                    <section><h3>Now</h3>
+                        <div class="stat-grid">
+                            <div class="stat-tile"><div class="k">Active</div><div class="v">${Math.round(l.active_power ?? l.power ?? 0)} W</div></div>
+                            <div class="stat-tile"><div class="k">Apparent</div><div class="v">${Math.round(l.apparent_power || 0)} VA</div></div>
+                            <div class="stat-tile"><div class="k">Voltage</div><div class="v">${Math.round(l.voltage || 0)} V</div></div>
+                            <div class="stat-tile"><div class="k">Load %</div><div class="v">${Math.round(l.percentage || 0)}%</div></div>
+                        </div>
+                    </section>
+                    <section><h3>Output Source Priority</h3>
+                        <div class="text-white/60 text-xs mb-2">Where the load gets its power from. Current: <span class="text-white font-medium">${current}</span></div>
+                        <div class="choice-grid">${choices}</div>
+                    </section>
+                    ${this.buildPasswordFieldHTML()}
+                    <div id="modal-toast"></div>
+                </div>`;
+        }
+
+        if (component === 'battery') {
+            const b = m.battery || {};
+            const current = c.charger_priority || '—';
+            const opts = [
+                { key: 'SOL_ONLY',  name: 'Only solar',       desc: 'Grid is never allowed to charge' },
+                { key: 'SOL_FIRST', name: 'Solar first',      desc: 'Solar charges; grid tops up if needed' },
+                { key: 'SOL_UTI',   name: 'Solar + Utility',  desc: 'Both charge simultaneously when available' },
+                { key: 'UTI_SOL',   name: 'Utility + Solar',  desc: 'Grid and solar both allowed' },
+            ];
+            const choices = opts.map((o) => `
+                <button class="choice-btn ${current === o.key ? 'current' : ''}" data-action="set-charger-priority" data-mode="${o.key}">
+                    <div class="name">${o.name}${current === o.key ? '<i class="fas fa-check text-emerald-400 text-xs ml-1"></i>' : ''}</div>
+                    <div class="desc">${o.desc}</div>
+                </button>`).join('');
+            const dir = b.direction || 'idle';
+            return `
+                <div class="modal-head"><div class="icon-ring" style="background: rgba(52,211,153,0.15); color: #34D399"><i class="fas fa-car-battery text-xl"></i></div>
+                    <div><div class="text-white font-semibold">Battery</div><div class="text-white/50 text-xs">Storage</div></div>${close}</div>
+                <div class="modal-body">
+                    <section><h3>Now</h3>
+                        <div class="stat-grid">
+                            <div class="stat-tile"><div class="k">State of Charge</div><div class="v">${Math.round(b.percentage || 0)}%</div></div>
+                            <div class="stat-tile"><div class="k">Voltage</div><div class="v">${(b.voltage || 0).toFixed(2)} V</div></div>
+                            <div class="stat-tile"><div class="k">Current</div><div class="v">${Math.abs(b.current || 0).toFixed(2)} A</div></div>
+                            <div class="stat-tile"><div class="k">Direction</div><div class="v">${dir.charAt(0).toUpperCase() + dir.slice(1)}</div></div>
+                        </div>
+                    </section>
+                    <section><h3>Charger Source Priority</h3>
+                        <div class="text-white/60 text-xs mb-2">What's allowed to charge the battery. Current: <span class="text-white font-medium">${current}</span></div>
+                        <div class="choice-grid">${choices}</div>
+                    </section>
+                    <section><h3>Battery Info</h3>
+                        <div class="info-row"><span class="k">Type</span><span class="v">${c.battery_type ?? '—'}</span></div>
+                        <div class="info-row"><span class="k">Max Charging Current</span><span class="v">${c.max_charging_current ?? '—'} A</span></div>
+                        <div class="info-row"><span class="k">Max AC Charging Current</span><span class="v">${c.max_ac_charging_current ?? '—'} A</span></div>
+                        <div class="info-row"><span class="k">Under Voltage</span><span class="v">${c.battery_under_voltage ?? '—'} V</span></div>
+                        <div class="info-row"><span class="k">Bulk Charge</span><span class="v">${c.battery_bulk_charge_voltage ?? '—'} V</span></div>
+                        <div class="info-row"><span class="k">Float Charge</span><span class="v">${c.battery_float_charge_voltage ?? '—'} V</span></div>
+                    </section>
+                    ${this.buildPasswordFieldHTML()}
+                    <div id="modal-toast"></div>
+                </div>`;
+        }
+
+        if (component === 'inverter') {
+            const sys = this.latestSystem || {};
+            const rows = (c.rows || []);
+            const rowsHTML = rows.length
+                ? rows.map((r) => `<div class="info-row"><span class="k">${r.label}</span><span class="v">${r.value}${r.unit ? ' ' + r.unit : ''}</span></div>`).join('')
+                : '<div class="text-white/50 text-sm">Loading…</div>';
+            return `
+                <div class="modal-head"><div class="icon-ring" style="background: rgba(251,191,36,0.15); color: #FBBF24"><i class="fas fa-microchip text-xl"></i></div>
+                    <div><div class="text-white font-semibold">Inverter</div><div class="text-white/50 text-xs">System</div></div>${close}</div>
+                <div class="modal-body">
+                    <section><h3>Now</h3>
+                        <div class="stat-grid">
+                            <div class="stat-tile"><div class="k">Temperature</div><div class="v">${sys.temperature ?? '—'}°C</div></div>
+                            <div class="stat-tile"><div class="k">Bus Voltage</div><div class="v">${sys.bus_voltage ? Math.round(sys.bus_voltage) : '—'} V</div></div>
+                            <div class="stat-tile"><div class="k">Mode</div><div class="v">${sys.mode_label ?? sys.mode ?? '—'}</div></div>
+                            <div class="stat-tile"><div class="k">Charge Stage</div><div class="v">${(sys.charge_stage || 'idle').replace(/^\w/, (ch) => ch.toUpperCase())}</div></div>
+                        </div>
+                    </section>
+                    <section><h3>Full Configuration (QPIRI)</h3>
+                        ${rowsHTML}
+                    </section>
+                </div>`;
+        }
+
+        return '';
+    }
+
+    buildPasswordFieldHTML() {
+        if (!this.passwordRequired) return '';
+        return `
+            <section><h3>Admin Password</h3>
+                <input type="password" id="modal-password" class="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm" placeholder="Required to apply changes">
+            </section>`;
+    }
+
+    attachModalHandlers() {
+        const card = document.getElementById('component-modal-card');
+        if (!card) return;
+        const closeBtn = card.querySelector('.modal-close');
+        if (closeBtn) closeBtn.addEventListener('click', () => this.closeModal());
+
+        card.querySelectorAll('[data-action]').forEach((btn) => {
+            btn.addEventListener('click', () => this.handleConfigAction(btn));
+        });
+    }
+
+    async handleConfigAction(btn) {
+        const action = btn.dataset.action;
+        const mode = btn.dataset.mode;
+        const endpoint = action === 'set-output-priority' ? '/set-output-priority'
+                      : action === 'set-charger-priority' ? '/set-charger-priority'
+                      : null;
+        if (!endpoint) return;
+        const label = btn.querySelector('.name').textContent.replace(/✓?$/, '').trim();
+        if (!confirm(`Apply change: ${label}?`)) return;
+
+        const toast = document.getElementById('modal-toast');
+        const password = (document.getElementById('modal-password') || {}).value || '';
+        if (toast) { toast.className = 'toast info'; toast.textContent = 'Sending…'; }
+
+        try {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode, password }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.error || data.success === false) {
+                if (toast) { toast.className = 'toast err'; toast.textContent = `Failed: ${data.error || res.statusText}`; }
+                return;
+            }
+            if (toast) { toast.className = 'toast ok'; toast.textContent = `Applied: ${data.applied?.label || mode}`; }
+            if (data.config) this.renderConfig(data.config);
+        } catch (err) {
+            if (toast) { toast.className = 'toast err'; toast.textContent = `Error: ${err.message}`; }
+        }
     }
 
     renderTodaySummary(s) {

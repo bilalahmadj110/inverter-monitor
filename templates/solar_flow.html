@@ -122,9 +122,83 @@
         .battery-svg-wrapper { display: flex; align-items: center; justify-content: center; }
         .battery-svg { width: 54px; height: 78px; }
         .battery-fill { transition: height 0.6s ease, y 0.6s ease, fill 0.6s ease; }
+
+        /* Component click affordance */
+        .flow-node { cursor: pointer; transition: transform 0.15s ease; }
+        .flow-node:hover { transform: translate(-0%, -0%) scale(1.04); }
+        .flow-node.inverter:hover { transform: translate(-50%, -50%) scale(1.04); }
+        .flow-node.grid:hover,
+        .flow-node.solar:hover { transform: scale(1.04); }
+        .flow-node.load:hover,
+        .flow-node.battery:hover { transform: scale(1.04); }
+
+        /* Side drawer */
+        .modal-backdrop {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+            z-index: 100;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+            display: block !important;   /* override Tailwind .hidden so transition can run */
+        }
+        .modal-backdrop.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .modal-backdrop.hidden .modal-card { transform: translateX(100%); }
+        .modal-card {
+            position: fixed;
+            top: 0; right: 0; bottom: 0;
+            width: 100%;
+            max-width: 440px;
+            overflow-y: auto;
+            background: linear-gradient(to bottom, #111827, #0f172a);
+            border-left: 1px solid rgba(255,255,255,0.1);
+            box-shadow: -25px 0 50px -12px rgba(0,0,0,0.6);
+            transform: translateX(0);
+            transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+            display: flex;
+            flex-direction: column;
+        }
+        @media (min-width: 640px) {
+            .modal-card { border-top-left-radius: 1rem; border-bottom-left-radius: 1rem; }
+        }
+        .modal-head { position: sticky; top: 0; background: rgba(17, 24, 39, 0.95); backdrop-filter: blur(8px); z-index: 1; }
+        .modal-head { display: flex; align-items: center; gap: 0.75rem; padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .modal-head .icon-ring { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+        .modal-body { padding: 1.25rem 1.5rem 1.5rem; }
+        .modal-body section { margin-bottom: 1.5rem; }
+        .modal-body section:last-child { margin-bottom: 0; }
+        .modal-body h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.55); font-weight: 600; margin-bottom: 0.5rem; }
+        .stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+        .stat-tile { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 0.5rem; padding: 0.625rem 0.75rem; }
+        .stat-tile .k { font-size: 0.7rem; color: rgba(255,255,255,0.5); }
+        .stat-tile .v { font-size: 1.05rem; font-weight: 600; color: #fff; }
+        .choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+        .choice-btn {
+            text-align: left; padding: 0.75rem; border-radius: 0.5rem;
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;
+            cursor: pointer; transition: background 0.15s ease, border 0.15s ease;
+        }
+        .choice-btn:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.2); }
+        .choice-btn.current { border-color: #34d399; background: rgba(52, 211, 153, 0.1); }
+        .choice-btn .name { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem; }
+        .choice-btn .desc { font-size: 0.72rem; color: rgba(255,255,255,0.55); margin-top: 0.15rem; }
+        .toast { margin-top: 0.75rem; padding: 0.625rem 0.75rem; border-radius: 0.5rem; font-size: 0.82rem; }
+        .toast.ok  { background: rgba(52, 211, 153, 0.12); color: #a7f3d0; border: 1px solid rgba(52, 211, 153, 0.3); }
+        .toast.err { background: rgba(239, 68, 68, 0.12); color: #fecaca; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .toast.info { background: rgba(96, 165, 250, 0.12); color: #bfdbfe; border: 1px solid rgba(96, 165, 250, 0.3); }
+        .info-row { display: flex; justify-content: space-between; padding: 0.35rem 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.85rem; }
+        .info-row:last-child { border-bottom: none; }
+        .info-row .k { color: rgba(255,255,255,0.6); }
+        .info-row .v { color: #fff; font-weight: 500; }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">
+
+    <!-- Component Settings Modal (content injected by JS) -->
+    <div id="component-modal" class="modal-backdrop hidden">
+        <div class="modal-card" id="component-modal-card" role="dialog" aria-modal="true"></div>
+    </div>
 
     <!-- Top Navigation -->
     <nav class="bg-black/30 backdrop-blur-sm border-b border-white/10">
@@ -160,42 +234,6 @@
                 <i class="fas fa-plug text-xs"></i>
                 <span id="grid-pill-label">Grid</span>
             </span>
-            <button id="priority-pill"
-                    class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-purple-500/20 text-purple-100 border border-white/10 hover:bg-purple-500/30 transition-colors">
-                <i class="fas fa-sliders text-xs"></i>
-                Output: <span id="priority-pill-label">—</span>
-                <i class="fas fa-chevron-down text-xs opacity-70"></i>
-            </button>
-        </div>
-
-        <!-- Output Priority Control Panel -->
-        <div id="priority-panel" class="hidden max-w-xl mx-auto mt-4 bg-black/40 backdrop-blur-sm rounded-lg p-4 border border-white/10 text-left">
-            <div class="flex items-center justify-between mb-3">
-                <div>
-                    <div class="text-white font-semibold text-sm">Change Output Priority</div>
-                    <div class="text-white/60 text-xs mt-0.5">Current: <span id="priority-current">—</span></div>
-                </div>
-                <button id="priority-close" class="text-white/60 hover:text-white text-sm"><i class="fas fa-times"></i></button>
-            </div>
-            <div class="grid grid-cols-3 gap-2 mb-3">
-                <button data-prio="SBU" class="priority-btn bg-white/10 hover:bg-purple-500/40 text-white text-sm py-2 rounded-lg transition-colors">
-                    <div class="font-semibold">SBU</div>
-                    <div class="text-[10px] text-white/60">Solar → Battery → Grid</div>
-                </button>
-                <button data-prio="SOL" class="priority-btn bg-white/10 hover:bg-purple-500/40 text-white text-sm py-2 rounded-lg transition-colors">
-                    <div class="font-semibold">SOL</div>
-                    <div class="text-[10px] text-white/60">Solar → Grid → Battery</div>
-                </button>
-                <button data-prio="UTI" class="priority-btn bg-white/10 hover:bg-purple-500/40 text-white text-sm py-2 rounded-lg transition-colors">
-                    <div class="font-semibold">UTI</div>
-                    <div class="text-[10px] text-white/60">Grid first</div>
-                </button>
-            </div>
-            <div id="priority-password-wrap" class="hidden mb-3">
-                <label class="text-white/70 text-xs">Admin password</label>
-                <input type="password" id="priority-password" class="w-full mt-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm" placeholder="Required to make changes">
-            </div>
-            <div id="priority-status" class="text-xs text-white/70"></div>
         </div>
         <button onclick="dashboard.requestManualUpdate()"
                 class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">

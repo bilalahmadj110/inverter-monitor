@@ -196,14 +196,20 @@ def get_device_mode():
 
 
 OUTPUT_PRIORITY_COMMANDS = {
-    'UTI': ('POP00', 'Utility first'),
-    'SOL': ('POP01', 'Solar first'),
-    'SBU': ('POP02', 'SBU (Solar → Battery → Utility)'),
+    'UTI': ('POP00', 'Utility first', 'Grid powers the load; battery/solar stay as backup.'),
+    'SOL': ('POP01', 'Solar first',   'Solar feeds load first, then grid; battery is last resort.'),
+    'SBU': ('POP02', 'SBU',           'Solar → Battery → Utility. Typical off-grid profile.'),
+}
+
+CHARGER_PRIORITY_COMMANDS = {
+    'UTI_SOL': ('PCP00', 'Utility + Solar',  'Grid and solar can both charge the battery.'),
+    'SOL_FIRST': ('PCP01', 'Solar first',    'Solar charges first; grid tops up if needed.'),
+    'SOL_UTI': ('PCP02', 'Solar + Utility',  'Both charge simultaneously when available.'),
+    'SOL_ONLY': ('PCP03', 'Only solar',      'Only solar is allowed to charge; grid never does.'),
 }
 
 
 def _normalize_output_priority(raw):
-    """Map whatever QPIRI reports to our canonical UTI/SOL/SBU."""
     if not raw:
         return None
     r = raw.strip().lower()
@@ -216,40 +222,115 @@ def _normalize_output_priority(raw):
     return raw.strip()
 
 
+def _normalize_charger_priority(raw):
+    if not raw:
+        return None
+    r = raw.strip().lower()
+    if 'only solar' in r or 'only' == r or r.startswith('only'):
+        return 'SOL_ONLY'
+    if 'solar first' in r:
+        return 'SOL_FIRST'
+    if 'solar and utility' in r or 'solar + utility' in r:
+        return 'SOL_UTI'
+    if 'utility' in r:
+        return 'UTI_SOL'
+    return raw.strip()
+
+
+def _parse_qpiri_raw_lines(output):
+    """Return QPIRI as an ordered list of (label, value, unit) for read-only display."""
+    pretty = {
+        'ac_input_voltage': 'AC Input Voltage',
+        'ac_input_current': 'AC Input Current',
+        'ac_output_voltage': 'AC Output Voltage',
+        'ac_output_frequency': 'AC Output Frequency',
+        'ac_output_current': 'AC Output Current',
+        'ac_output_apparent_power': 'AC Output Apparent Power',
+        'ac_output_active_power': 'AC Output Active Power',
+        'battery_voltage': 'Battery Nominal Voltage',
+        'battery_recharge_voltage': 'Battery Recharge Voltage',
+        'battery_under_voltage': 'Battery Under Voltage',
+        'battery_bulk_charge_voltage': 'Bulk Charge Voltage',
+        'battery_float_charge_voltage': 'Float Charge Voltage',
+        'battery_type': 'Battery Type',
+        'max_ac_charging_current': 'Max AC Charging Current',
+        'max_charging_current': 'Max Charging Current',
+        'input_voltage_range': 'Input Voltage Range',
+        'output_source_priority': 'Output Source Priority',
+        'charger_source_priority': 'Charger Source Priority',
+        'max_parallel_units': 'Max Parallel Units',
+        'machine_type': 'Machine Type',
+        'topology': 'Topology',
+        'output_mode': 'Output Mode',
+        'battery_redischarge_voltage': 'Battery Redischarge Voltage',
+    }
+    parsed = parse_mppsolar_output(output)
+    rows = []
+    for key in pretty:
+        if key in parsed:
+            entry = parsed[key]
+            rows.append({
+                'key': key,
+                'label': pretty[key],
+                'value': entry.get('value'),
+                'unit': entry.get('unit') or '',
+            })
+    return rows
+
+
 def get_inverter_config():
-    """QPIRI → {output_priority, charger_priority, battery_type, ...}. Returns {} on failure."""
+    """QPIRI → normalized config dict plus raw rows for display. Returns {} on failure."""
     try:
-        out = _run_mpp('QPIRI', timeout=10, retries=2)
+        out = _run_mpp('QPIRI', timeout=10, retries=3)
         parsed = parse_mppsolar_output(out)
         op_raw = parsed.get('output_source_priority', {}).get('value')
         cp_raw = parsed.get('charger_source_priority', {}).get('value')
         return {
             'output_priority': _normalize_output_priority(op_raw),
             'output_priority_raw': op_raw,
-            'charger_priority': cp_raw,
+            'charger_priority': _normalize_charger_priority(cp_raw),
+            'charger_priority_raw': cp_raw,
             'battery_type': parsed.get('battery_type', {}).get('value'),
             'max_charging_current': parsed.get('max_charging_current', {}).get('value'),
             'max_ac_charging_current': parsed.get('max_ac_charging_current', {}).get('value'),
             'battery_under_voltage': parsed.get('battery_under_voltage', {}).get('value'),
             'battery_bulk_charge_voltage': parsed.get('battery_bulk_charge_voltage', {}).get('value'),
             'battery_float_charge_voltage': parsed.get('battery_float_charge_voltage', {}).get('value'),
+            'ac_output_voltage': parsed.get('ac_output_voltage', {}).get('value'),
+            'ac_output_frequency': parsed.get('ac_output_frequency', {}).get('value'),
+            'rows': _parse_qpiri_raw_lines(out),
         }
     except Exception as e:
         logger.debug(f"QPIRI unavailable: {e}")
         return {}
 
 
+def _run_write_command(command_code, label):
+    logger.info(f"Sending write command {command_code} ({label})")
+    out = _run_mpp(command_code, timeout=10, retries=3)
+    lower = (out or '').lower()
+    if 'nak' in lower or 'error' in lower:
+        raise RuntimeError(f"Inverter rejected {command_code}: {out.strip()[:160]}")
+    return out
+
+
 def set_output_priority(mode):
     """Set output source priority via POP command. `mode` must be UTI, SOL, or SBU."""
     mode = (mode or '').strip().upper()
     if mode not in OUTPUT_PRIORITY_COMMANDS:
-        raise ValueError(f"Invalid mode '{mode}'. Must be one of {list(OUTPUT_PRIORITY_COMMANDS)}")
-    cmd_code, label = OUTPUT_PRIORITY_COMMANDS[mode]
-    logger.info(f"Setting output priority to {mode} ({label}) via {cmd_code}")
-    out = _run_mpp(cmd_code, timeout=10, retries=3)
-    lower = (out or '').lower()
-    if 'nak' in lower or 'error' in lower:
-        raise RuntimeError(f"Inverter rejected {cmd_code}: {out.strip()[:160]}")
+        raise ValueError(f"Invalid output priority '{mode}'. Must be one of {list(OUTPUT_PRIORITY_COMMANDS)}")
+    cmd_code, label, _ = OUTPUT_PRIORITY_COMMANDS[mode]
+    out = _run_write_command(cmd_code, label)
+    return {'mode': mode, 'label': label, 'command': cmd_code, 'response': out.strip()[:200]}
+
+
+def set_charger_priority(mode):
+    """Set charger source priority via PCP command."""
+    mode = (mode or '').strip().upper()
+    if mode not in CHARGER_PRIORITY_COMMANDS:
+        raise ValueError(f"Invalid charger priority '{mode}'. Must be one of {list(CHARGER_PRIORITY_COMMANDS)}")
+    cmd_code, label, _ = CHARGER_PRIORITY_COMMANDS[mode]
+    out = _run_write_command(cmd_code, label)
     return {'mode': mode, 'label': label, 'command': cmd_code, 'response': out.strip()[:200]}
 
 
