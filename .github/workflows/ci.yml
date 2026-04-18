@@ -76,23 +76,15 @@ jobs:
       group: deploy-pi
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Rsync source into deploy path
+      - name: Pull latest into deploy path
+        working-directory: /home/bilal/Desktop/Inverter
         run: |
-          rsync -av \
-            --exclude '.venv' \
-            --exclude '__pycache__' \
-            --exclude 'data' \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude '.claude' \
-            --exclude 'CLAUDE.md' \
-            "${GITHUB_WORKSPACE}/" /home/bilal/Desktop/Inverter/
+          git fetch --prune origin
+          git reset --hard origin/main
 
       - name: Install / update Python dependencies
+        working-directory: /home/bilal/Desktop/Inverter
         run: |
-          cd /home/bilal/Desktop/Inverter
           .venv/bin/pip install --quiet --upgrade pip
           .venv/bin/pip install --quiet -r requirements.txt
 
