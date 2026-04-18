@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Inverter box -->
+  <rect x="8" y="12" width="48" height="40" rx="5" fill="#E65100" stroke="#FFB74D" stroke-width="1.5"/>
+  <!-- Display screen -->
+  <rect x="14" y="18" width="36" height="16" rx="2" fill="#1B5E20" opacity="0.8"/>
+  <!-- LED indicators -->
+  <circle cx="18" cy="22" r="1.5" fill="#76FF03"/>
+  <circle cx="24" cy="22" r="1.5" fill="#76FF03" opacity="0.5"/>
+  <circle cx="30" cy="22" r="1.5" fill="#FFD54F"/>
+  <!-- Display text lines -->
+  <rect x="17" y="26" width="20" height="1.5" rx="0.5" fill="#76FF03" opacity="0.6"/>
+  <rect x="17" y="30" width="14" height="1.5" rx="0.5" fill="#76FF03" opacity="0.4"/>
+  <!-- Lightning bolt -->
+  <path d="M28 36 L24 44 L30 44 L26 54 L36 42 L30 42 L34 36Z" fill="#FFD54F"/>
+  <!-- Ventilation holes -->
+  <line x1="40" y1="38" x2="46" y2="38" stroke="#FFB74D" stroke-width="0.8" opacity="0.4"/>
+  <line x1="40" y1="41" x2="46" y2="41" stroke="#FFB74D" stroke-width="0.8" opacity="0.4"/>
+  <line x1="40" y1="44" x2="46" y2="44" stroke="#FFB74D" stroke-width="0.8" opacity="0.4"/>
+  <line x1="40" y1="47" x2="46" y2="47" stroke="#FFB74D" stroke-width="0.8" opacity="0.4"/>
+  <!-- Input/output connectors -->
+  <rect x="14" y="48" width="4" height="3" rx="1" fill="#FFB74D"/>
+  <rect x="22" y="48" width="4" height="3" rx="1" fill="#FFB74D"/>
+  <rect x="38" y="48" width="4" height="3" rx="1" fill="#FFB74D"/>
+  <rect x="46" y="48" width="4" height="3" rx="1" fill="#FFB74D"/>
+</svg>

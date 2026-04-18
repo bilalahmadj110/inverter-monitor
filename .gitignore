@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.Python
+build/
+dist/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Data / runtime artifacts
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Local/secret config
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Claude / local assistant config (not for public repo)
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+.claude.json
+
+# Local notes
+socket.json

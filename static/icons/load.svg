@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- House roof -->
+  <path d="M6 30 L32 8 L58 30Z" fill="#7E57C2" stroke="#B39DDB" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- House body -->
+  <rect x="12" y="30" width="40" height="26" rx="2" fill="#5E35B1" stroke="#B39DDB" stroke-width="1"/>
+  <!-- Door -->
+  <rect x="26" y="40" width="12" height="16" rx="2" fill="#311B92"/>
+  <circle cx="36" cy="49" r="1.2" fill="#FFD54F"/>
+  <!-- Window left -->
+  <rect x="16" y="35" width="8" height="7" rx="1" fill="#FFF59D" opacity="0.8"/>
+  <line x1="20" y1="35" x2="20" y2="42" stroke="#5E35B1" stroke-width="0.8"/>
+  <line x1="16" y1="38.5" x2="24" y2="38.5" stroke="#5E35B1" stroke-width="0.8"/>
+  <!-- Window right -->
+  <rect x="40" y="35" width="8" height="7" rx="1" fill="#FFF59D" opacity="0.8"/>
+  <line x1="44" y1="35" x2="44" y2="42" stroke="#5E35B1" stroke-width="0.8"/>
+  <line x1="40" y1="38.5" x2="48" y2="38.5" stroke="#5E35B1" stroke-width="0.8"/>
+  <!-- Power meter on wall -->
+  <rect x="42" y="48" width="5" height="6" rx="1" fill="#B39DDB" opacity="0.5"/>
+  <circle cx="44.5" cy="51" r="1.5" fill="#FFD54F" opacity="0.6"/>
+</svg>

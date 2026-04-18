@@ -1,0 +1,12 @@
+annotated-types==0.7.0
+mppsolar @ git+https://github.com/jblance/mpp-solar.git@6a5311642be97514e83d2b6d0c1be8c5d046da7e
+paho-mqtt==1.6.1
+pydantic==2.11.5
+pydantic_core==2.33.2
+pyserial==3.5
+typing-inspection==0.4.1
+typing_extensions==4.13.2
+Flask==3.0.0
+Flask-SocketIO==5.3.6
+python-socketio==5.11.0
+python-engineio>=4.8.0

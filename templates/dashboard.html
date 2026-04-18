@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar Inverter Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/dashboard.css') }}" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <h1><i class="fas fa-bolt"></i> Solar Inverter Monitor</h1>
+            <p>Real-time System Status</p>
+            <button class="refresh-btn" onclick="dashboard.requestManualUpdate()">
+                <i class="fas fa-sync-alt" id="refresh-icon"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Dashboard -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Live Metrics -->
+            <div class="metrics-grid">
+                <!-- Solar Panel -->
+                <div class="metric-card solar">
+                    <div class="metric-header">
+                        <i class="fas fa-sun"></i>
+                        <span>Solar PV</span>
+                        <div class="status-indicator" id="solar-status"></div>
+                    </div>
+                    <div class="metric-value">
+                        <span id="solar-power">0</span><small>W</small>
+                    </div>
+                    <div class="metric-details">
+                        <span><span id="solar-voltage">0</span>V</span>
+                        <span><span id="solar-current">0</span>A</span>
+                    </div>
+                </div>
+
+                <!-- Grid -->
+                <div class="metric-card grid">
+                    <div class="metric-header">
+                        <i class="fas fa-plug"></i>
+                        <span>Grid Input</span>
+                        <div class="status-indicator" id="grid-status"></div>
+                    </div>
+                    <div class="metric-value">
+                        <span id="grid-voltage">0</span><small>V</small>
+                    </div>
+                    <div class="metric-details">
+                        <span><span id="grid-frequency">0</span>Hz</span>
+                        <span><span id="grid-power">0</span>W</span>
+                    </div>
+                </div>
+
+                <!-- Battery -->
+                <div class="metric-card battery">
+                    <div class="metric-header">
+                        <i class="fas fa-battery-half"></i>
+                        <span>Battery</span>
+                        <div class="status-indicator" id="battery-status"></div>
+                    </div>
+                    <div class="metric-value">
+                        <span id="battery-percentage">0</span><small>%</small>
+                    </div>
+                    <div class="metric-details">
+                        <span><span id="battery-voltage">0</span>V</span>
+                        <span><span id="battery-current">0</span>A</span>
+                    </div>
+                </div>
+
+                <!-- Load -->
+                <div class="metric-card load">
+                    <div class="metric-header">
+                        <i class="fas fa-home"></i>
+                        <span>Load Output</span>
+                        <div class="status-indicator" id="load-status"></div>
+                    </div>
+                    <div class="metric-value">
+                        <span id="load-power">0</span><small>W</small>
+                    </div>
+                    <div class="metric-details">
+                        <span><span id="load-voltage">0</span>V</span>
+                        <span><span id="load-percentage">0</span>%</span>
+                    </div>
+                </div>
+
+                <!-- System Info -->
+                <div class="metric-card system">
+                    <div class="metric-header">
+                        <i class="fas fa-microchip"></i>
+                        <span>System</span>
+                        <div class="status-indicator" id="system-status"></div>
+                    </div>
+                    <div class="metric-value">
+                        <span id="temp">--</span><small>°C</small>
+                    </div>
+                    <div class="metric-details">
+                        <span>Temperature</span>
+                        <span id="last-update">--</span>
+                    </div>
+                </div>
+
+                <!-- Connection Status -->
+                <div class="metric-card connection">
+                    <div class="metric-header">
+                        <i class="fas fa-wifi" id="connection-icon"></i>
+                        <span>Connection</span>
+                        <div class="status-indicator active"></div>
+                    </div>
+                    <div class="metric-value">
+                        <span id="total-readings">0</span><small>reads</small>
+                    </div>
+                    <div class="metric-details">
+                        <span id="avg-duration">--</span>
+                        <span id="status-text">Connecting...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Energy Statistics -->
+            <div class="stats-section">
+                <div class="stats-header">
+                    <h2>Energy Statistics</h2>
+                    <div class="stats-tabs">
+                        <button class="stats-tab active" data-period="day">Today</button>
+                        <button class="stats-tab" data-period="month">This Month</button>
+                        <button class="stats-tab" data-period="year">This Year</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <!-- Solar Stats -->
+                    <div class="stats-card">
+                        <div class="stats-icon solar"><i class="fas fa-sun"></i></div>
+                        <div class="stats-content">
+                            <h3>Solar Generation</h3>
+                            <div class="stats-values">
+                                <div class="stat-item">
+                                    <span class="label">Peak</span>
+                                    <span class="value"><span id="solar-peak">0</span>W</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="label">Average</span>
+                                    <span class="value"><span id="solar-avg">0</span>W</span>
+                                </div>
+                                <div class="stat-item energy">
+                                    <span class="label">Energy</span>
+                                    <span class="value"><span id="solar-energy">0</span>kWh</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Grid Stats -->
+                    <div class="stats-card">
+                        <div class="stats-icon grid"><i class="fas fa-plug"></i></div>
+                        <div class="stats-content">
+                            <h3>Grid Usage</h3>
+                            <div class="stats-values">
+                                <div class="stat-item">
+                                    <span class="label">Peak</span>
+                                    <span class="value"><span id="grid-peak">0</span>W</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="label">Average</span>
+                                    <span class="value"><span id="grid-avg">0</span>W</span>
+                                </div>
+                                <div class="stat-item energy">
+                                    <span class="label">Consumed</span>
+                                    <span class="value"><span id="grid-energy">0</span>kWh</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Load Stats -->
+                    <div class="stats-card">
+                        <div class="stats-icon load"><i class="fas fa-home"></i></div>
+                        <div class="stats-content">
+                            <h3>Load Consumption</h3>
+                            <div class="stats-values">
+                                <div class="stat-item">
+                                    <span class="label">Peak</span>
+                                    <span class="value"><span id="load-peak">0</span>W</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="label">Average</span>
+                                    <span class="value"><span id="load-avg">0</span>W</span>
+                                </div>
+                                <div class="stat-item energy">
+                                    <span class="label">Energy</span>
+                                    <span class="value"><span id="load-energy">0</span>kWh</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Battery Stats -->
+                    <div class="stats-card">
+                        <div class="stats-icon battery"><i class="fas fa-battery-half"></i></div>
+                        <div class="stats-content">
+                            <h3>Battery Flow</h3>
+                            <div class="stats-values">
+                                <div class="stat-item">
+                                    <span class="label">Charged</span>
+                                    <span class="value"><span id="battery-charge">0</span>kWh</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="label">Discharged</span>
+                                    <span class="value"><span id="battery-discharge">0</span>kWh</span>
+                                </div>
+                                <div class="stat-item energy">
+                                    <span class="label">Net</span>
+                                    <span class="value"><span id="battery-net">0</span>kWh</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Raw Data Section -->
+    <section class="raw-data-section">
+        <div class="container">
+            <div class="section-header">
+                <h2><i class="fas fa-table"></i> Recent Readings</h2>
+                <div class="table-controls">
+                    <select id="page-size-select" class="form-select">
+                        <option value="10">10 per page</option>
+                        <option value="25" selected>25 per page</option>
+                        <option value="50">50 per page</option>
+                        <option value="100">100 per page</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="dashboard.exportData()">
+                        <i class="fas fa-download"></i> Export CSV
+                    </button>
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Solar (W)</th>
+                            <th>Grid (V)</th>
+                            <th>Battery (%)</th>
+                            <th>Load (W)</th>
+                            <th>Temp (°C)</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody id="data-table-body">
+                        <tr><td colspan="7" class="text-center">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="pagination-container">
+                <div class="pagination-info" id="pagination-info">
+                    Loading...
+                </div>
+                <div class="pagination-controls">
+                    <button class="pagination-btn" id="first-page-btn" onclick="dashboard.goToPage(1)">
+                        <i class="fas fa-angle-double-left"></i>
+                    </button>
+                    <button class="pagination-btn" id="prev-page-btn" onclick="dashboard.previousPage()">
+                        <i class="fas fa-angle-left"></i>
+                    </button>
+                    <div class="page-numbers" id="page-numbers"></div>
+                    <button class="pagination-btn" id="next-page-btn" onclick="dashboard.nextPage()">
+                        <i class="fas fa-angle-right"></i>
+                    </button>
+                    <button class="pagination-btn" id="last-page-btn" onclick="dashboard.goToPage('last')">
+                        <i class="fas fa-angle-double-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
