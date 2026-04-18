@@ -3,6 +3,7 @@ from flask_socketio import SocketIO, emit
 import threading
 import time
 import os
+import subprocess
 import logging
 import power_stats
 from continuous_reader import ContinuousReader
@@ -12,6 +13,22 @@ from inverter_status import (
 )
 
 ADMIN_PASSWORD = os.environ.get('INVERTER_ADMIN_PASSWORD', '').strip()
+
+
+def _resolve_version():
+    """Short git SHA baked in at startup — used as a deploy marker in the UI."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    try:
+        sha = subprocess.check_output(
+            ['git', '-C', here, 'rev-parse', '--short', 'HEAD'],
+            stderr=subprocess.DEVNULL, text=True, timeout=2,
+        ).strip()
+        return sha or 'dev'
+    except Exception:
+        return 'dev'
+
+
+APP_VERSION = _resolve_version()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,6 +42,11 @@ thread_lock = threading.Lock()
 
 stats_manager = power_stats.get_instance()
 continuous_reader = ContinuousReader(stats_manager)
+
+
+@app.context_processor
+def _inject_version():
+    return {'app_version': APP_VERSION}
 
 
 def _build_stats_payload():
