@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python:
+    name: Python lint & syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff pyflakes
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Compile every .py
+        run: python -m compileall -q .
+
+  frontend:
+    name: Frontend lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install eslint + html-validate
+        run: npm init -y && npm install --no-fund --no-audit eslint@9 globals html-validate
+
+      - name: ESLint (JS)
+        run: |
+          cat > eslint.config.mjs <<'EOF'
+          import globals from "globals";
+          export default [{
+            files: ["static/**/*.js"],
+            languageOptions: {
+              ecmaVersion: 2022,
+              sourceType: "script",
+              globals: { ...globals.browser, io: "readonly", Chart: "readonly", dashboard: "writable" },
+            },
+            rules: {
+              "no-undef": "error",
+              "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+              "no-empty": "warn",
+            },
+          }];
+          EOF
+          npx eslint "static/**/*.js"
+
+      - name: HTML validate
+        run: npx html-validate "templates/**/*.html" || true
