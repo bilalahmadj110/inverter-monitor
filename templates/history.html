@@ -271,13 +271,12 @@
         }
         function hideStatus() { if (statusEl) statusEl.style.display = 'none'; }
         function activePanel() { return document.querySelector('[data-panel]:not(.hidden)'); }
-        function setPanelBusy(busy) {
-            const p = activePanel();
-            if (p) p.classList.toggle('panel-loading', !!busy);
-        }
         async function withStatus(loadingText, fn) {
             showStatus('loading', loadingText);
-            setPanelBusy(true);
+            // Capture panel at entry so a tab switch mid-load doesn't leave
+            // the previous panel stuck in the dimmed state.
+            const panel = activePanel();
+            if (panel) panel.classList.add('panel-loading');
             try {
                 const result = await fn();
                 hideStatus();
@@ -287,7 +286,7 @@
                 showStatus('error', 'Failed to load · tap to retry', 5000);
                 throw err;
             } finally {
-                setPanelBusy(false);
+                if (panel) panel.classList.remove('panel-loading');
             }
         }
         function fmtDuration(seconds) {
@@ -425,9 +424,10 @@
         const monthChart = new Chart(document.getElementById('month-chart'), {
             type: 'bar',
             data: { labels: [], datasets: [
-                { label: 'Solar', data: [], backgroundColor: palette.solar.border },
-                { label: 'Grid',  data: [], backgroundColor: palette.grid.border },
-                { label: 'Load',  data: [], backgroundColor: palette.load.border },
+                { label: 'Solar',   data: [], backgroundColor: palette.solar.border },
+                { label: 'Grid',    data: [], backgroundColor: palette.grid.border },
+                { label: 'Load',    data: [], backgroundColor: palette.load.border },
+                { label: 'Battery', data: [], backgroundColor: palette.battery.border },
             ] },
             options: {
                 responsive: true, maintainAspectRatio: false,
@@ -470,6 +470,7 @@
                 monthChart.data.datasets[0].data = rows.map((r) => r.solar_energy);
                 monthChart.data.datasets[1].data = rows.map((r) => r.grid_energy);
                 monthChart.data.datasets[2].data = rows.map((r) => r.load_energy);
+                monthChart.data.datasets[3].data = rows.map((r) => r.battery_charge_energy || 0);
                 monthChart.update();
 
                 if (rows.length === 0) showStatus('empty', 'No data for this month', 4000);

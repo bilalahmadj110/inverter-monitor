@@ -67,12 +67,9 @@ class SolarFlowDashboard {
             this.updateComponentStates(data.metrics || {});
             this.updateFlowAnimations(data.metrics || {});
             this.updateTiming(data.timing);
-            this.setSystemStatus('Operating Normally', false);
         } else {
-            const errorMsg = (data && data.error) || 'Inverter not connected';
             this.updateConnectionStatus('Inverter Offline');
             this.setAllComponentsInactive();
-            this.setSystemStatus(errorMsg, true);
         }
     }
 
@@ -556,16 +553,6 @@ class SolarFlowDashboard {
         }
     }
 
-    setSystemStatus(text, isError) {
-        const statusEl = document.getElementById('system-status');
-        const pill = document.getElementById('system-status-pill');
-        if (statusEl) statusEl.textContent = text;
-        if (pill) {
-            pill.className = 'inline-flex items-center space-x-2 px-4 py-2 rounded-full ' +
-                (isError ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300');
-        }
-    }
-
     updateComponentStates(metrics) {
         const solar = metrics.solar || {};
         const battery = metrics.battery || {};
@@ -704,16 +691,6 @@ class SolarFlowDashboard {
 
     startUpdateTimer() {
         setInterval(() => this.updateLastUpdateTime(), 1000);
-    }
-
-    requestManualUpdate() {
-        if (!this.isConnected) return;
-        this.socket.emit('request_update');
-        const refreshIcon = document.getElementById('refresh-icon');
-        if (refreshIcon) {
-            refreshIcon.classList.add('fa-spin');
-            setTimeout(() => refreshIcon.classList.remove('fa-spin'), 1000);
-        }
     }
 }
 
