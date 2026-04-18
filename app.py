@@ -120,6 +120,29 @@ def get_recent_readings():
     return jsonify(stats_manager.get_recent_readings(minutes))
 
 
+@app.route('/day-readings')
+def get_day_readings():
+    date = request.args.get('date') or None
+    try:
+        bucket = int(request.args.get('bucket', 60))
+    except (TypeError, ValueError):
+        bucket = 60
+    bucket = max(10, min(bucket, 600))
+    return jsonify(stats_manager.get_day_readings(date, bucket))
+
+
+@app.route('/outages')
+def get_outages():
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+    return jsonify(stats_manager.get_outages(from_date, to_date))
+
+
+@app.route('/reports')
+def reports():
+    return render_template('history.html')
+
+
 @app.route('/raw-data')
 def get_raw_data():
     page = int(request.args.get('page', 1))

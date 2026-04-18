@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports · Solar Energy System Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .tab-btn.active { background-color: rgb(37 99 235); color: white; }
+        .tab-btn { color: rgba(255,255,255,0.75); }
+        .tab-btn:hover { background-color: rgba(255,255,255,0.1); }
+        input[type="date"], input[type="month"], select {
+            color-scheme: dark;
+            background-color: rgba(255,255,255,0.08);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">
+
+    <!-- Top Navigation -->
+    <nav class="bg-black/30 backdrop-blur-sm border-b border-white/10">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-white font-semibold">
+                <i class="fas fa-solar-panel text-yellow-300"></i>
+                <span>Inverter Monitor</span>
+            </div>
+            <div class="flex items-center gap-1">
+                <a href="/" class="px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Live</a>
+                <a href="/reports" class="px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white">Reports</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <div class="max-w-6xl mx-auto px-4 py-6">
+        <h1 class="text-3xl font-bold text-white mb-1">Reports</h1>
+        <p class="text-blue-200 text-sm">Historical power and energy analytics</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="max-w-6xl mx-auto px-4">
+        <div class="inline-flex rounded-lg overflow-hidden border border-white/20 bg-black/20" role="group">
+            <button data-tab="day"     class="tab-btn px-4 py-2 text-sm active transition-colors">Day</button>
+            <button data-tab="month"   class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Month</button>
+            <button data-tab="year"    class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Year</button>
+            <button data-tab="outages" class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Grid Outages</button>
+        </div>
+    </div>
+
+    <!-- Panels -->
+    <div class="max-w-6xl mx-auto px-4 py-6">
+
+        <!-- DAY PANEL -->
+        <section data-panel="day" class="space-y-6">
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 flex flex-wrap items-center gap-3">
+                <label class="text-white/80 text-sm">Date</label>
+                <input type="date" id="day-date">
+                <button id="day-prev" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white"><i class="fas fa-chevron-left"></i></button>
+                <button id="day-next" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white"><i class="fas fa-chevron-right"></i></button>
+                <button id="day-today" class="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white">Today</button>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-yellow-300 text-xs">Solar</div>
+                    <div class="text-white text-xl font-bold"><span id="day-solar-kwh">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                    <div class="text-white/50 text-[10px] mt-1">Peak <span id="day-solar-peak">0</span>W</div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-blue-300 text-xs">Grid Import</div>
+                    <div class="text-white text-xl font-bold"><span id="day-grid-kwh">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                    <div class="text-white/50 text-[10px] mt-1">Peak <span id="day-grid-peak">0</span>W</div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-purple-300 text-xs">Load</div>
+                    <div class="text-white text-xl font-bold"><span id="day-load-kwh">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                    <div class="text-white/50 text-[10px] mt-1">Peak <span id="day-load-peak">0</span>W</div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-green-300 text-xs">Bat. Charge / Discharge</div>
+                    <div class="text-white text-base font-semibold"><span id="day-bat-charge">0</span> / <span id="day-bat-discharge">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-emerald-300 text-xs">Self-Sufficiency</div>
+                    <div class="text-white text-xl font-bold"><span id="day-selfsuff">0</span><span class="text-xs text-white/60 ml-1">%</span></div>
+                </div>
+            </div>
+
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                <h2 class="text-white font-semibold mb-3">Power Timeline</h2>
+                <div class="relative" style="height: 380px;">
+                    <canvas id="day-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- MONTH PANEL -->
+        <section data-panel="month" class="space-y-6 hidden">
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 flex flex-wrap items-center gap-3">
+                <label class="text-white/80 text-sm">Month</label>
+                <input type="month" id="month-input">
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-yellow-300 text-xs">Solar</div>
+                    <div class="text-white text-xl font-bold"><span id="mo-solar">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-blue-300 text-xs">Grid Import</div>
+                    <div class="text-white text-xl font-bold"><span id="mo-grid">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-purple-300 text-xs">Load</div>
+                    <div class="text-white text-xl font-bold"><span id="mo-load">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-green-300 text-xs">Bat. Charge / Discharge</div>
+                    <div class="text-white text-base font-semibold"><span id="mo-bat-charge">0</span> / <span id="mo-bat-discharge">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                </div>
+            </div>
+
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                <h2 class="text-white font-semibold mb-3">Daily Breakdown</h2>
+                <div class="relative" style="height: 380px;">
+                    <canvas id="month-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- YEAR PANEL -->
+        <section data-panel="year" class="space-y-6 hidden">
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 flex flex-wrap items-center gap-3">
+                <label class="text-white/80 text-sm">Year</label>
+                <select id="year-input"></select>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-yellow-300 text-xs">Solar</div>
+                    <div class="text-white text-xl font-bold"><span id="yr-solar">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-blue-300 text-xs">Grid Import</div>
+                    <div class="text-white text-xl font-bold"><span id="yr-grid">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-purple-300 text-xs">Load</div>
+                    <div class="text-white text-xl font-bold"><span id="yr-load">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-green-300 text-xs">Bat. Charge / Discharge</div>
+                    <div class="text-white text-base font-semibold"><span id="yr-bat-charge">0</span> / <span id="yr-bat-discharge">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                </div>
+            </div>
+
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                <h2 class="text-white font-semibold mb-3">Monthly Breakdown</h2>
+                <div class="relative" style="height: 380px;">
+                    <canvas id="year-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- OUTAGES PANEL -->
+        <section data-panel="outages" class="space-y-6 hidden">
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 flex flex-wrap items-center gap-3">
+                <label class="text-white/80 text-sm">From</label>
+                <input type="date" id="out-from">
+                <label class="text-white/80 text-sm">To</label>
+                <input type="date" id="out-to">
+                <button id="out-apply" class="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white">Apply</button>
+                <button data-days="7"  class="out-preset px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white">7d</button>
+                <button data-days="30" class="out-preset px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white">30d</button>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-red-300 text-xs">Outages</div>
+                    <div class="text-white text-2xl font-bold"><span id="out-count">0</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-orange-300 text-xs">Total Downtime</div>
+                    <div class="text-white text-2xl font-bold"><span id="out-total">0</span><span class="text-xs text-white/60 ml-1">h</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-emerald-300 text-xs">Grid Availability</div>
+                    <div class="text-white text-2xl font-bold"><span id="out-avail">100</span><span class="text-xs text-white/60 ml-1">%</span></div>
+                </div>
+            </div>
+
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                <h2 class="text-white font-semibold mb-3">Outage List</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-white/90">
+                        <thead class="text-white/60 text-xs uppercase border-b border-white/10">
+                            <tr>
+                                <th class="text-left py-2 px-2">Start</th>
+                                <th class="text-left py-2 px-2">End</th>
+                                <th class="text-right py-2 px-2">Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody id="out-list">
+                            <tr><td colspan="3" class="text-center text-white/50 py-6">No outages</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+    (function () {
+        const palette = {
+            solar: { border: '#FCD34D', fill: 'rgba(252, 211, 77, 0.25)' },
+            grid:  { border: '#60A5FA', fill: 'rgba(96, 165, 250, 0.25)' },
+            load:  { border: '#A78BFA', fill: 'rgba(167, 139, 250, 0.25)' },
+            battery: { border: '#34D399', fill: 'rgba(52, 211, 153, 0.25)' },
+        };
+
+        function isoDate(d) { return d.toISOString().slice(0, 10); }
+        function todayStr() { return isoDate(new Date()); }
+        function monthStr(d) { return d.toISOString().slice(0, 7); }
+        function fmtDuration(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+            const h = Math.floor(m / 60);
+            const mm = m % 60;
+            return mm ? `${h}h ${mm}m` : `${h}h`;
+        }
+        function fmtTime(ts) { return new Date(ts * 1000).toLocaleString(); }
+
+        // Tab switching
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        const panels = document.querySelectorAll('[data-panel]');
+        tabButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                tabButtons.forEach((b) => b.classList.remove('active'));
+                btn.classList.add('active');
+                const tab = btn.dataset.tab;
+                panels.forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== tab));
+                if (tab === 'day') loadDay(document.getElementById('day-date').value);
+                if (tab === 'month') loadMonth(document.getElementById('month-input').value);
+                if (tab === 'year') loadYear(document.getElementById('year-input').value);
+                if (tab === 'outages') loadOutages();
+            });
+        });
+
+        // ============ DAY TAB ============
+        const dayChart = new Chart(document.getElementById('day-chart'), {
+            type: 'line',
+            data: {
+                datasets: [
+                    { label: 'Solar',   data: [], borderColor: palette.solar.border,   backgroundColor: palette.solar.fill,   fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+                    { label: 'Grid',    data: [], borderColor: palette.grid.border,    backgroundColor: palette.grid.fill,    fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+                    { label: 'Load',    data: [], borderColor: palette.load.border,    backgroundColor: palette.load.fill,    fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+                    { label: 'Battery', data: [], borderColor: palette.battery.border, backgroundColor: palette.battery.fill, fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2, borderDash: [6, 4] },
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                plugins: {
+                    legend: { labels: { color: '#E5E7EB' } },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleTimeString() : '',
+                            label: (c) => `${c.dataset.label}: ${Math.round(c.parsed.y)} W`,
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        ticks: {
+                            color: '#CBD5E1', maxRotation: 0, autoSkip: true, maxTicksLimit: 10,
+                            callback: (v) => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        },
+                        grid: { color: 'rgba(255,255,255,0.08)' },
+                    },
+                    y: { ticks: { color: '#CBD5E1', callback: (v) => `${v} W` }, grid: { color: 'rgba(255,255,255,0.08)' }, beginAtZero: true },
+                },
+            },
+        });
+
+        async function loadDay(date) {
+            if (!date) date = todayStr();
+            document.getElementById('day-date').value = date;
+            try {
+                const [summaryRes, readingsRes] = await Promise.all([
+                    fetch(`/summary?date=${date}`),
+                    fetch(`/day-readings?date=${date}&bucket=60`),
+                ]);
+                const s = await summaryRes.json();
+                const r = await readingsRes.json();
+
+                document.getElementById('day-solar-kwh').textContent = (s.solar_kwh || 0).toFixed(2);
+                document.getElementById('day-grid-kwh').textContent = (s.grid_kwh || 0).toFixed(2);
+                document.getElementById('day-load-kwh').textContent = (s.load_kwh || 0).toFixed(2);
+                document.getElementById('day-bat-charge').textContent = (s.battery_charge_kwh || 0).toFixed(2);
+                document.getElementById('day-bat-discharge').textContent = (s.battery_discharge_kwh || 0).toFixed(2);
+                document.getElementById('day-selfsuff').textContent = Math.round((s.self_sufficiency || 0) * 100);
+
+                const points = r.points || [];
+                const peak = (key) => points.reduce((m, p) => Math.max(m, p[key] || 0), 0);
+                document.getElementById('day-solar-peak').textContent = Math.round(peak('solar_power'));
+                document.getElementById('day-grid-peak').textContent = Math.round(peak('grid_power'));
+                document.getElementById('day-load-peak').textContent = Math.round(peak('load_power'));
+
+                dayChart.data.datasets[0].data = points.map((p) => ({ x: p.timestamp * 1000, y: p.solar_power }));
+                dayChart.data.datasets[1].data = points.map((p) => ({ x: p.timestamp * 1000, y: p.grid_power }));
+                dayChart.data.datasets[2].data = points.map((p) => ({ x: p.timestamp * 1000, y: p.load_power }));
+                dayChart.data.datasets[3].data = points.map((p) => ({ x: p.timestamp * 1000, y: p.battery_power }));
+                dayChart.update('none');
+            } catch (err) {
+                console.error('Failed to load day', err);
+            }
+        }
+
+        document.getElementById('day-date').addEventListener('change', (e) => loadDay(e.target.value));
+        document.getElementById('day-today').addEventListener('click', () => loadDay(todayStr()));
+        document.getElementById('day-prev').addEventListener('click', () => {
+            const d = new Date(document.getElementById('day-date').value); d.setDate(d.getDate() - 1); loadDay(isoDate(d));
+        });
+        document.getElementById('day-next').addEventListener('click', () => {
+            const d = new Date(document.getElementById('day-date').value); d.setDate(d.getDate() + 1); loadDay(isoDate(d));
+        });
+
+        // ============ MONTH TAB ============
+        const monthChart = new Chart(document.getElementById('month-chart'), {
+            type: 'bar',
+            data: { labels: [], datasets: [
+                { label: 'Solar', data: [], backgroundColor: palette.solar.border },
+                { label: 'Grid',  data: [], backgroundColor: palette.grid.border },
+                { label: 'Load',  data: [], backgroundColor: palette.load.border },
+            ] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#E5E7EB' } },
+                    tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y} kWh` } },
+                },
+                scales: {
+                    x: { ticks: { color: '#CBD5E1' }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                    y: { ticks: { color: '#CBD5E1', callback: (v) => `${v} kWh` }, grid: { color: 'rgba(255,255,255,0.08)' }, beginAtZero: true },
+                },
+            },
+        });
+
+        async function loadMonth(monthVal) {
+            if (!monthVal) monthVal = monthStr(new Date());
+            document.getElementById('month-input').value = monthVal;
+            try {
+                const [monthRes, historyRes] = await Promise.all([
+                    fetch(`/stats?period=month&month=${monthVal}`),
+                    fetch('/history?days=365'),
+                ]);
+                const m = await monthRes.json();
+                const hist = await historyRes.json();
+
+                const rows = hist.filter((r) => r.date.startsWith(monthVal));
+                document.getElementById('mo-solar').textContent = ((m.solar_energy || 0) / 1000).toFixed(2);
+                document.getElementById('mo-grid').textContent  = ((m.grid_energy  || 0) / 1000).toFixed(2);
+                document.getElementById('mo-load').textContent  = ((m.load_energy  || 0) / 1000).toFixed(2);
+                document.getElementById('mo-bat-charge').textContent = ((m.battery_charge_energy || 0) / 1000).toFixed(2);
+                document.getElementById('mo-bat-discharge').textContent = ((m.battery_discharge_energy || 0) / 1000).toFixed(2);
+
+                monthChart.data.labels = rows.map((r) => r.date.slice(8, 10));
+                monthChart.data.datasets[0].data = rows.map((r) => r.solar_energy);
+                monthChart.data.datasets[1].data = rows.map((r) => r.grid_energy);
+                monthChart.data.datasets[2].data = rows.map((r) => r.load_energy);
+                monthChart.update();
+            } catch (err) {
+                console.error('Failed to load month', err);
+            }
+        }
+
+        document.getElementById('month-input').addEventListener('change', (e) => loadMonth(e.target.value));
+
+        // ============ YEAR TAB ============
+        const yearChart = new Chart(document.getElementById('year-chart'), {
+            type: 'bar',
+            data: { labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], datasets: [
+                { label: 'Solar', data: Array(12).fill(0), backgroundColor: palette.solar.border },
+                { label: 'Grid',  data: Array(12).fill(0), backgroundColor: palette.grid.border },
+                { label: 'Load',  data: Array(12).fill(0), backgroundColor: palette.load.border },
+            ] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#E5E7EB' } },
+                    tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y} kWh` } },
+                },
+                scales: {
+                    x: { ticks: { color: '#CBD5E1' }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                    y: { ticks: { color: '#CBD5E1', callback: (v) => `${v} kWh` }, grid: { color: 'rgba(255,255,255,0.08)' }, beginAtZero: true },
+                },
+            },
+        });
+
+        async function loadYear(yearVal) {
+            const year = yearVal || String(new Date().getFullYear());
+            document.getElementById('year-input').value = year;
+            try {
+                const [yearRes, historyRes] = await Promise.all([
+                    fetch(`/stats?period=year&year=${year}`),
+                    fetch('/history?days=365'),
+                ]);
+                const y = await yearRes.json();
+                const hist = await historyRes.json();
+
+                document.getElementById('yr-solar').textContent = ((y.solar_energy || 0) / 1000).toFixed(2);
+                document.getElementById('yr-grid').textContent  = ((y.grid_energy  || 0) / 1000).toFixed(2);
+                document.getElementById('yr-load').textContent  = ((y.load_energy  || 0) / 1000).toFixed(2);
+                document.getElementById('yr-bat-charge').textContent = ((y.battery_charge_energy || 0) / 1000).toFixed(2);
+                document.getElementById('yr-bat-discharge').textContent = ((y.battery_discharge_energy || 0) / 1000).toFixed(2);
+
+                const monthlyTotals = Array.from({ length: 12 }, () => ({ solar: 0, grid: 0, load: 0 }));
+                hist.filter((r) => r.date.startsWith(year)).forEach((r) => {
+                    const m = parseInt(r.date.slice(5, 7), 10) - 1;
+                    monthlyTotals[m].solar += r.solar_energy;
+                    monthlyTotals[m].grid  += r.grid_energy;
+                    monthlyTotals[m].load  += r.load_energy;
+                });
+                yearChart.data.datasets[0].data = monthlyTotals.map((x) => +x.solar.toFixed(2));
+                yearChart.data.datasets[1].data = monthlyTotals.map((x) => +x.grid.toFixed(2));
+                yearChart.data.datasets[2].data = monthlyTotals.map((x) => +x.load.toFixed(2));
+                yearChart.update();
+            } catch (err) {
+                console.error('Failed to load year', err);
+            }
+        }
+
+        document.getElementById('year-input').addEventListener('change', (e) => loadYear(e.target.value));
+
+        // ============ OUTAGES TAB ============
+        async function loadOutages() {
+            const from = document.getElementById('out-from').value;
+            const to = document.getElementById('out-to').value;
+            try {
+                const res = await fetch(`/outages?from=${from}&to=${to}`);
+                const data = await res.json();
+                document.getElementById('out-count').textContent = data.count || 0;
+                document.getElementById('out-total').textContent = ((data.total_down_seconds || 0) / 3600).toFixed(2);
+                document.getElementById('out-avail').textContent = ((data.availability || 0) * 100).toFixed(2);
+
+                const list = document.getElementById('out-list');
+                if (!data.outages || data.outages.length === 0) {
+                    list.innerHTML = '<tr><td colspan="3" class="text-center text-white/50 py-6">No outages in this range</td></tr>';
+                    return;
+                }
+                list.innerHTML = data.outages.map((o) => `
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 px-2">${fmtTime(o.start)}</td>
+                        <td class="py-2 px-2">${fmtTime(o.end)}</td>
+                        <td class="py-2 px-2 text-right">${fmtDuration(o.duration_seconds)}</td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load outages', err);
+            }
+        }
+
+        function setOutRange(days) {
+            const to = new Date();
+            const from = new Date();
+            from.setDate(from.getDate() - days + 1);
+            document.getElementById('out-from').value = isoDate(from);
+            document.getElementById('out-to').value = isoDate(to);
+            loadOutages();
+        }
+        document.getElementById('out-apply').addEventListener('click', loadOutages);
+        document.querySelectorAll('.out-preset').forEach((b) => {
+            b.addEventListener('click', () => setOutRange(Number(b.dataset.days)));
+        });
+
+        // ============ INIT ============
+        // Populate year selector
+        const nowYear = new Date().getFullYear();
+        const yearSelect = document.getElementById('year-input');
+        for (let y = nowYear; y >= nowYear - 4; y--) {
+            const opt = document.createElement('option');
+            opt.value = String(y); opt.textContent = String(y);
+            yearSelect.appendChild(opt);
+        }
+
+        document.getElementById('day-date').value = todayStr();
+        document.getElementById('month-input').value = monthStr(new Date());
+        setOutRange(7);
+        loadDay(todayStr());
+    })();
+    </script>
+</body>
+</html>

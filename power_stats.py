@@ -615,6 +615,123 @@ class PowerStats:
             logger.error(f"Error getting recent readings: {e}")
             return []
 
+    def get_day_readings(self, date=None, bucket_seconds=60):
+        """Per-reading power series for a given day, downsampled to `bucket_seconds` buckets."""
+        try:
+            day = date or datetime.now().strftime('%Y-%m-%d')
+            start_dt = datetime.strptime(day, '%Y-%m-%d')
+            end_dt = start_dt + timedelta(days=1)
+            start_ts = int(start_dt.timestamp())
+            end_ts = int(end_dt.timestamp())
+            bucket_seconds = max(10, min(int(bucket_seconds), 600))
+
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute(f'''
+                SELECT
+                    (timestamp / {bucket_seconds}) * {bucket_seconds} AS bucket,
+                    AVG(solar_power)    AS solar_power,
+                    AVG(grid_power)     AS grid_power,
+                    AVG(load_power)     AS load_power,
+                    AVG(battery_power)  AS battery_power,
+                    AVG(battery_percentage) AS battery_percentage,
+                    AVG(grid_voltage)   AS grid_voltage
+                FROM power_readings
+                WHERE timestamp >= ? AND timestamp < ?
+                GROUP BY bucket
+                ORDER BY bucket ASC
+                ''', (start_ts, end_ts))
+                rows = cursor.fetchall()
+                return {
+                    'date': day,
+                    'bucket_seconds': bucket_seconds,
+                    'points': [{
+                        'timestamp': row['bucket'],
+                        'solar_power': round(row['solar_power'] or 0, 1),
+                        'grid_power': round(row['grid_power'] or 0, 1),
+                        'load_power': round(row['load_power'] or 0, 1),
+                        'battery_power': round(row['battery_power'] or 0, 1),
+                        'battery_percentage': round(row['battery_percentage'] or 0, 1),
+                        'grid_voltage': round(row['grid_voltage'] or 0, 1),
+                    } for row in rows],
+                }
+        except Exception as e:
+            logger.error(f"Error getting day readings: {e}")
+            return {'date': date, 'bucket_seconds': bucket_seconds, 'points': []}
+
+    def get_outages(self, from_date=None, to_date=None, min_voltage=180.0, min_duration_seconds=30):
+        """Identify contiguous grid outage windows from power_readings.grid_voltage.
+        Returns list of {start, end, duration_seconds} plus a totals dict."""
+        try:
+            if to_date:
+                end_dt = datetime.strptime(to_date, '%Y-%m-%d') + timedelta(days=1)
+            else:
+                end_dt = datetime.now() + timedelta(days=1)
+            if from_date:
+                start_dt = datetime.strptime(from_date, '%Y-%m-%d')
+            else:
+                start_dt = end_dt - timedelta(days=7)
+
+            start_ts = int(start_dt.timestamp())
+            end_ts = int(end_dt.timestamp())
+
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                SELECT timestamp, grid_voltage
+                FROM power_readings
+                WHERE timestamp >= ? AND timestamp < ? AND grid_voltage IS NOT NULL
+                ORDER BY timestamp ASC
+                ''', (start_ts, end_ts))
+                rows = cursor.fetchall()
+
+            outages = []
+            current_start = None
+            last_ts = None
+            gap_threshold = 60  # seconds — split if reading gap exceeds this
+            for ts, voltage in rows:
+                is_down = (voltage or 0) < min_voltage
+                if is_down:
+                    if current_start is None:
+                        current_start = ts
+                    last_ts = ts
+                else:
+                    if current_start is not None and last_ts is not None:
+                        duration = last_ts - current_start
+                        if duration >= min_duration_seconds:
+                            outages.append({
+                                'start': current_start,
+                                'end': last_ts,
+                                'duration_seconds': duration,
+                            })
+                    current_start = None
+                    last_ts = None
+                if last_ts is not None and (ts - last_ts) > gap_threshold and is_down:
+                    pass  # handled above
+            if current_start is not None and last_ts is not None:
+                duration = last_ts - current_start
+                if duration >= min_duration_seconds:
+                    outages.append({
+                        'start': current_start,
+                        'end': last_ts,
+                        'duration_seconds': duration,
+                    })
+
+            total_down = sum(o['duration_seconds'] for o in outages)
+            total_range = end_ts - start_ts
+            return {
+                'from': datetime.fromtimestamp(start_ts).strftime('%Y-%m-%d'),
+                'to': datetime.fromtimestamp(end_ts - 1).strftime('%Y-%m-%d'),
+                'outages': outages,
+                'count': len(outages),
+                'total_down_seconds': total_down,
+                'availability': round(1 - (total_down / total_range), 4) if total_range > 0 else 1.0,
+            }
+        except Exception as e:
+            logger.error(f"Error getting outages: {e}")
+            return {'outages': [], 'count': 0, 'total_down_seconds': 0, 'availability': 1.0}
+
     def get_reading_statistics(self):
         return {
             'avg_duration': self.reading_stats['avg_duration'],
