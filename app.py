@@ -143,6 +143,12 @@ def get_outages():
     return jsonify(stats_manager.get_outages(from_date, to_date))
 
 
+@app.route('/recompute-daily', methods=['POST'])
+def recompute_daily():
+    day = request.args.get('day')
+    return jsonify(stats_manager.recompute_daily_stats(day))
+
+
 @app.route('/reports')
 def reports():
     return render_template('history.html')

@@ -3,7 +3,7 @@ import time
 import os
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -585,6 +585,99 @@ class PowerStats:
         except Exception as e:
             logger.error(f"Error getting history: {e}")
             return []
+
+    def recompute_daily_stats(self, day=None):
+        """Recompute daily_stats for a given day from raw power_readings (trapezoid rule).
+        Useful for fixing rows that were inflated/deflated by earlier bugs or service races.
+        If `day` is None, recomputes every day present in power_readings."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if day:
+                    days = [day]
+                else:
+                    rows = cursor.execute("SELECT DISTINCT date(timestamp, 'unixepoch', 'localtime') FROM power_readings").fetchall()
+                    days = [r[0] for r in rows if r[0]]
+
+                updated = []
+                for d in days:
+                    start_dt = datetime.strptime(d, '%Y-%m-%d')
+                    end_dt = start_dt + timedelta(days=1)
+                    start_ts = int(start_dt.timestamp())
+                    end_ts = int(end_dt.timestamp())
+                    rows = cursor.execute('''
+                        SELECT timestamp, solar_power, grid_power, load_power, battery_power
+                        FROM power_readings
+                        WHERE timestamp >= ? AND timestamp < ?
+                        ORDER BY timestamp ASC
+                    ''', (start_ts, end_ts)).fetchall()
+
+                    solar_wh = grid_wh = load_wh = charge_wh = discharge_wh = 0.0
+                    solar_min, solar_max = float('inf'), 0.0
+                    grid_min, grid_max = float('inf'), 0.0
+                    load_min, load_max = float('inf'), 0.0
+                    batt_min, batt_max = float('inf'), 0.0
+                    solar_wsum = grid_wsum = load_wsum = 0.0
+                    total_dt = 0.0
+
+                    for i in range(len(rows)):
+                        ts, s, g, l, b = rows[i]
+                        s = s or 0; g = g or 0; l = l or 0; b = b or 0
+                        solar_min, solar_max = min(solar_min, s), max(solar_max, s)
+                        grid_min, grid_max = min(grid_min, g), max(grid_max, g)
+                        load_min, load_max = min(load_min, l), max(load_max, l)
+                        batt_min, batt_max = min(batt_min, abs(b)), max(batt_max, abs(b))
+                        if i == 0:
+                            continue
+                        pts, ps, pg, pl, pb = rows[i - 1]
+                        dt = ts - pts
+                        if dt <= 0 or dt > GAP_CAP_SECONDS:
+                            continue
+                        dt_h = dt / 3600.0
+                        solar_wh += (ps + s) / 2.0 * dt_h
+                        grid_wh  += (pg + g) / 2.0 * dt_h
+                        load_wh  += (pl + l) / 2.0 * dt_h
+                        prev_charge = max(0, pb); curr_charge = max(0, b)
+                        prev_disch = max(0, -pb); curr_disch = max(0, -b)
+                        charge_wh += (prev_charge + curr_charge) / 2.0 * dt_h
+                        discharge_wh += (prev_disch + curr_disch) / 2.0 * dt_h
+                        solar_wsum += (ps + s) / 2.0 * dt
+                        grid_wsum  += (pg + g) / 2.0 * dt
+                        load_wsum  += (pl + l) / 2.0 * dt
+                        total_dt += dt
+
+                    if not rows:
+                        continue
+
+                    def safe_min(v): return 0 if v == float('inf') else v
+                    def avg(wsum): return wsum / total_dt if total_dt > 0 else 0
+
+                    cursor.execute('''
+                    INSERT OR REPLACE INTO daily_stats (
+                        date, solar_min, solar_max, solar_avg, solar_energy,
+                        grid_min, grid_max, grid_avg, grid_energy,
+                        load_min, load_max, load_avg, load_energy,
+                        battery_min, battery_max, battery_charge_energy, battery_discharge_energy
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        d,
+                        safe_min(solar_min), solar_max, avg(solar_wsum), solar_wh,
+                        safe_min(grid_min),  grid_max,  avg(grid_wsum),  grid_wh,
+                        safe_min(load_min),  load_max,  avg(load_wsum),  load_wh,
+                        safe_min(batt_min),  batt_max,  charge_wh, discharge_wh,
+                    ))
+                    updated.append({'date': d, 'solar_wh': round(solar_wh, 2), 'grid_wh': round(grid_wh, 2), 'load_wh': round(load_wh, 2)})
+
+                conn.commit()
+
+            # Refresh in-memory current_day from DB so live totals line up
+            self.current_day = self._empty_day_accumulator()
+            self.last_sample = None
+            self._load_today_stats()
+            return {'updated': updated, 'count': len(updated)}
+        except Exception as e:
+            logger.error(f"Error recomputing daily stats: {e}")
+            return {'updated': [], 'count': 0, 'error': str(e)}
 
     def get_recent_readings(self, minutes=30, bucket_seconds=None, target_points=200):
         """Return power series for the last N minutes with adaptive server-side bucketing.
