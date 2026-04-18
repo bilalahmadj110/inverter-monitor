@@ -7,6 +7,12 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
+        :root { color-scheme: dark; }
+        html, body { color-scheme: dark; }
+        input, select, textarea, button { color-scheme: dark; }
+        ::placeholder { color: rgba(255, 255, 255, 0.55); opacity: 1; }
+        select option { background-color: #0f172a; color: #fff; }
+
         .dim-component {
             opacity: 0.3;
             filter: grayscale(70%);
@@ -573,6 +579,11 @@
                         },
                     },
                     tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.92)',
+                        titleColor: '#fff',
+                        bodyColor: '#fff',
+                        borderColor: 'rgba(255,255,255,0.15)',
+                        borderWidth: 1,
                         filter: (c) => !(c.dataset.label || '').endsWith(' min') && !(c.dataset.label || '').endsWith(' max'),
                         callbacks: {
                             title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleTimeString() : '',
