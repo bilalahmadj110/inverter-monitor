@@ -453,26 +453,38 @@
         const ctx = document.getElementById('live-chart');
         if (!ctx) return;
 
-        const palette = {
-            solar:   { border: '#FCD34D', fill: 'rgba(252, 211, 77, 0.20)' },
-            grid:    { border: '#60A5FA', fill: 'rgba(96, 165, 250, 0.20)' },
-            load:    { border: '#A78BFA', fill: 'rgba(167, 139, 250, 0.20)' },
-            battery: { border: '#34D399', fill: 'rgba(52, 211, 153, 0.20)' },
-        };
+        const metrics = [
+            { key: 'solar',   label: 'Solar',   border: '#FCD34D', band: 'rgba(252, 211, 77, 0.15)', fill:  'rgba(252, 211, 77, 0.15)' },
+            { key: 'grid',    label: 'Grid',    border: '#60A5FA', band: 'rgba(96, 165, 250, 0.15)', fill:  'rgba(96, 165, 250, 0.15)' },
+            { key: 'load',    label: 'Load',    border: '#A78BFA', band: 'rgba(167, 139, 250, 0.15)', fill: 'rgba(167, 139, 250, 0.12)' },
+            { key: 'battery', label: 'Battery', border: '#34D399', band: 'rgba(52, 211, 153, 0.15)', fill:  'rgba(52, 211, 153, 0.12)', dashed: true },
+        ];
+
+        // Build 3 datasets per metric: min (invisible), max (fills to min = band), mean (visible line).
+        const datasets = [];
+        const idx = {};
+        metrics.forEach((m) => {
+            idx[m.key] = { min: datasets.length, max: datasets.length + 1, avg: datasets.length + 2 };
+            datasets.push({
+                label: `${m.label} min`, data: [], borderColor: 'transparent', backgroundColor: m.band,
+                pointRadius: 0, borderWidth: 0, fill: false, tension: 0.25,
+            });
+            datasets.push({
+                label: `${m.label} max`, data: [], borderColor: 'transparent', backgroundColor: m.band,
+                pointRadius: 0, borderWidth: 0, fill: '-1', tension: 0.25,
+            });
+            datasets.push({
+                label: m.label, data: [], borderColor: m.border, backgroundColor: m.fill,
+                pointRadius: 0, borderWidth: 2, fill: false, tension: 0.25,
+                ...(m.dashed ? { borderDash: [6, 4] } : {}),
+            });
+        });
 
         let rangeMinutes = 30;
 
         const chart = new Chart(ctx, {
             type: 'line',
-            data: {
-                labels: [],
-                datasets: [
-                    { label: 'Solar',   data: [], borderColor: palette.solar.border,   backgroundColor: palette.solar.fill,   fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2 },
-                    { label: 'Grid',    data: [], borderColor: palette.grid.border,    backgroundColor: palette.grid.fill,    fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2 },
-                    { label: 'Load',    data: [], borderColor: palette.load.border,    backgroundColor: palette.load.fill,    fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2 },
-                    { label: 'Battery', data: [], borderColor: palette.battery.border, backgroundColor: palette.battery.fill, fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2, borderDash: [6, 4] },
-                ],
-            },
+            data: { datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -480,8 +492,14 @@
                 parsing: false,
                 interaction: { mode: 'nearest', axis: 'x', intersect: false },
                 plugins: {
-                    legend: { labels: { color: '#E5E7EB' } },
+                    legend: {
+                        labels: {
+                            color: '#E5E7EB',
+                            filter: (item) => !(item.text || '').endsWith(' min') && !(item.text || '').endsWith(' max'),
+                        },
+                    },
                     tooltip: {
+                        filter: (c) => !(c.dataset.label || '').endsWith(' min') && !(c.dataset.label || '').endsWith(' max'),
                         callbacks: {
                             title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleTimeString() : '',
                             label: (c) => `${c.dataset.label}: ${Math.round(c.parsed.y)} W`,
@@ -491,12 +509,21 @@
                 scales: {
                     x: {
                         type: 'linear',
+                        min: Date.now() - 30 * 60 * 1000,
+                        max: Date.now(),
                         ticks: {
                             color: '#CBD5E1',
                             maxRotation: 0,
                             autoSkip: true,
                             maxTicksLimit: 8,
-                            callback: (v) => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                            callback: (v) => {
+                                const d = new Date(v);
+                                const rangeMs = rangeMinutes * 60 * 1000;
+                                // For long ranges, drop seconds to reduce visual noise
+                                return rangeMs > 30 * 60 * 1000
+                                    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                    : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                            },
                         },
                         grid: { color: 'rgba(255,255,255,0.08)' },
                     },
@@ -509,6 +536,13 @@
             },
         });
 
+        function rollAxis() {
+            const now = Date.now();
+            chart.options.scales.x.min = now - rangeMinutes * 60 * 1000;
+            chart.options.scales.x.max = now;
+            chart.update('none');
+        }
+
         const buttons = document.querySelectorAll('.live-range-btn');
         const activeClasses = ['bg-blue-600', 'hover:bg-blue-700'];
 
@@ -520,59 +554,41 @@
             });
         }
 
-        function trimBuffer() {
-            const cutoff = Date.now() - rangeMinutes * 60 * 1000;
-            for (const ds of chart.data.datasets) {
-                while (ds.data.length && ds.data[0].x < cutoff) ds.data.shift();
-            }
-        }
-
-        function appendPoint(tsMs, solar, grid, load, battery) {
-            chart.data.datasets[0].data.push({ x: tsMs, y: solar });
-            chart.data.datasets[1].data.push({ x: tsMs, y: grid });
-            chart.data.datasets[2].data.push({ x: tsMs, y: load });
-            chart.data.datasets[3].data.push({ x: tsMs, y: battery });
-            trimBuffer();
-            chart.update('none');
-        }
-
-        async function loadInitial(min) {
+        async function loadData(min) {
             rangeMinutes = min;
             setActive(min);
             try {
                 const res = await fetch(`/recent-readings?minutes=${min}`);
-                const rows = await res.json();
-                chart.data.datasets[0].data = rows.map((r) => ({ x: r.timestamp * 1000, y: r.solar_power }));
-                chart.data.datasets[1].data = rows.map((r) => ({ x: r.timestamp * 1000, y: r.grid_power }));
-                chart.data.datasets[2].data = rows.map((r) => ({ x: r.timestamp * 1000, y: r.load_power }));
-                chart.data.datasets[3].data = rows.map((r) => ({ x: r.timestamp * 1000, y: r.battery_power }));
-                trimBuffer();
-                chart.update('none');
+                const data = await res.json();
+                const points = (data && data.points) || [];
+                metrics.forEach((m) => {
+                    const mi = idx[m.key];
+                    chart.data.datasets[mi.min].data = points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_min`] }));
+                    chart.data.datasets[mi.max].data = points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_max`] }));
+                    chart.data.datasets[mi.avg].data = points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_avg`] }));
+                });
+                rollAxis();
             } catch (err) {
                 console.error('Failed to load recent readings', err);
             }
         }
 
-        buttons.forEach((b) => b.addEventListener('click', () => loadInitial(Number(b.dataset.min))));
-        loadInitial(30);
+        buttons.forEach((b) => b.addEventListener('click', () => loadData(Number(b.dataset.min))));
+        loadData(30);
 
-        // Piggyback on the dashboard's existing socket connection to append live points.
-        const waitForSocket = setInterval(() => {
-            if (!window.dashboard || !window.dashboard.socket) return;
-            clearInterval(waitForSocket);
-            window.dashboard.socket.on('inverter_update', (data) => {
-                if (!data || !data.success) return;
-                const m = data.metrics || {};
-                const solar = Math.round((m.solar && m.solar.power) || 0);
-                const grid  = Math.round((m.grid  && m.grid.power)  || 0);
-                const load  = Math.round((m.load  && (m.load.active_power ?? m.load.power)) || 0);
-                const b = m.battery || {};
-                const charging = (b.charging_current || 0) * (b.voltage || 0);
-                const discharging = (b.discharge_current || 0) * (b.voltage || 0);
-                const battery = Math.round(charging - discharging);
-                appendPoint(Date.now(), solar, grid, load, battery);
-            });
-        }, 200);
+        // Data refresh: short window = faster cadence, long window = every 10s.
+        // Server-side bucketing is cheap, so polling more often is fine.
+        function refreshCadence() {
+            return rangeMinutes <= 5 ? 3000 : rangeMinutes <= 30 ? 5000 : 10000;
+        }
+        let dataTimer = setInterval(() => loadData(rangeMinutes), refreshCadence());
+        buttons.forEach((b) => b.addEventListener('click', () => {
+            clearInterval(dataTimer);
+            dataTimer = setInterval(() => loadData(rangeMinutes), refreshCadence());
+        }));
+
+        // Smooth scroll: shift the visible window every second so "now" is always at the right edge.
+        setInterval(rollAxis, 1000);
     })();
     </script>
 </body>

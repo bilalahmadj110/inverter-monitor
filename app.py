@@ -117,7 +117,12 @@ def get_recent_readings():
     except (TypeError, ValueError):
         minutes = 30
     minutes = max(1, min(minutes, 720))
-    return jsonify(stats_manager.get_recent_readings(minutes))
+    bucket_arg = request.args.get('bucket')
+    try:
+        bucket_seconds = int(bucket_arg) if bucket_arg else None
+    except (TypeError, ValueError):
+        bucket_seconds = None
+    return jsonify(stats_manager.get_recent_readings(minutes, bucket_seconds))
 
 
 @app.route('/day-readings')

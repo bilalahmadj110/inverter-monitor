@@ -586,34 +586,55 @@ class PowerStats:
             logger.error(f"Error getting history: {e}")
             return []
 
-    def get_recent_readings(self, minutes=30):
-        """Return per-reading power series for live chart (last N minutes)."""
+    def get_recent_readings(self, minutes=30, bucket_seconds=None, target_points=200):
+        """Return power series for the last N minutes with adaptive server-side bucketing.
+        Returns avg/min/max per bucket so the frontend can draw a mean line with a min/max envelope."""
         try:
             minutes = max(1, min(int(minutes), 720))
-            cutoff = int(time.time()) - (minutes * 60)
+            total_seconds = minutes * 60
+            if bucket_seconds is None:
+                bucket_seconds = max(3, total_seconds // max(1, target_points))
+            bucket_seconds = max(3, min(int(bucket_seconds), 3600))
+            cutoff = int(time.time()) - total_seconds
+
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                cursor.execute('''
-                SELECT timestamp, solar_power, grid_power, load_power, battery_power,
-                       battery_percentage, grid_voltage
+                cursor.execute(f'''
+                SELECT
+                    (timestamp / {bucket_seconds}) * {bucket_seconds} AS bucket,
+                    AVG(solar_power)   AS solar_avg,   MIN(solar_power)   AS solar_min,   MAX(solar_power)   AS solar_max,
+                    AVG(grid_power)    AS grid_avg,    MIN(grid_power)    AS grid_min,    MAX(grid_power)    AS grid_max,
+                    AVG(load_power)    AS load_avg,    MIN(load_power)    AS load_min,    MAX(load_power)    AS load_max,
+                    AVG(battery_power) AS battery_avg, MIN(battery_power) AS battery_min, MAX(battery_power) AS battery_max,
+                    AVG(battery_percentage) AS battery_percentage,
+                    AVG(grid_voltage)  AS grid_voltage
                 FROM power_readings
                 WHERE timestamp >= ?
-                ORDER BY timestamp ASC
+                GROUP BY bucket
+                ORDER BY bucket ASC
                 ''', (cutoff,))
                 rows = cursor.fetchall()
-                return [{
-                    'timestamp': row['timestamp'],
-                    'solar_power': round(row['solar_power'] or 0, 1),
-                    'grid_power': round(row['grid_power'] or 0, 1),
-                    'load_power': round(row['load_power'] or 0, 1),
-                    'battery_power': round(row['battery_power'] or 0, 1),
-                    'battery_percentage': round(row['battery_percentage'] or 0, 1),
-                    'grid_voltage': round(row['grid_voltage'] or 0, 1),
-                } for row in rows]
+
+            def r(v):
+                return round(v or 0, 1)
+
+            return {
+                'minutes': minutes,
+                'bucket_seconds': bucket_seconds,
+                'points': [{
+                    'timestamp': row['bucket'],
+                    'solar_avg': r(row['solar_avg']),   'solar_min': r(row['solar_min']),   'solar_max': r(row['solar_max']),
+                    'grid_avg':  r(row['grid_avg']),    'grid_min':  r(row['grid_min']),    'grid_max':  r(row['grid_max']),
+                    'load_avg':  r(row['load_avg']),    'load_min':  r(row['load_min']),    'load_max':  r(row['load_max']),
+                    'battery_avg': r(row['battery_avg']), 'battery_min': r(row['battery_min']), 'battery_max': r(row['battery_max']),
+                    'battery_percentage': r(row['battery_percentage']),
+                    'grid_voltage': r(row['grid_voltage']),
+                } for row in rows],
+            }
         except Exception as e:
             logger.error(f"Error getting recent readings: {e}")
-            return []
+            return {'minutes': minutes, 'bucket_seconds': 0, 'points': []}
 
     def get_day_readings(self, date=None, bucket_seconds=60):
         """Per-reading power series for a given day, downsampled to `bucket_seconds` buckets."""
