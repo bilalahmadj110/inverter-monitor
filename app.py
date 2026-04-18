@@ -2,9 +2,13 @@ from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 import threading
 import time
+import os
 import logging
 import power_stats
 from continuous_reader import ContinuousReader
+from inverter_status import set_output_priority, OUTPUT_PRIORITY_COMMANDS
+
+ADMIN_PASSWORD = os.environ.get('INVERTER_ADMIN_PASSWORD', '').strip()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,6 +33,7 @@ def _build_stats_payload():
     all_stats['summary'] = stats_manager.get_summary()
     latest = continuous_reader.get_latest_data()
     all_stats['system'] = latest.get('system') if latest else None
+    all_stats['config'] = continuous_reader.get_config()
     return all_stats
 
 
@@ -147,6 +152,43 @@ def get_outages():
 def recompute_daily():
     day = request.args.get('day')
     return jsonify(stats_manager.recompute_daily_stats(day))
+
+
+@app.route('/config')
+def get_config():
+    """Current inverter config (output priority, charger priority, battery thresholds, etc.)."""
+    return jsonify({
+        'config': continuous_reader.get_config(),
+        'output_priority_options': [{'key': k, 'label': v[1]} for k, v in OUTPUT_PRIORITY_COMMANDS.items()],
+        'password_required': bool(ADMIN_PASSWORD),
+    })
+
+
+@app.route('/set-output-priority', methods=['POST'])
+def set_output_priority_route():
+    body = request.get_json(silent=True) or {}
+    mode = (body.get('mode') or request.args.get('mode') or '').upper()
+    supplied_pw = body.get('password') or request.headers.get('X-Admin-Password') or ''
+    if ADMIN_PASSWORD and supplied_pw != ADMIN_PASSWORD:
+        logger.warning(f"Unauthorized set-output-priority attempt (mode={mode})")
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        before = continuous_reader.get_config().get('output_priority')
+        result = set_output_priority(mode)
+        logger.info(f"Output priority changed: {before} -> {mode} (command={result['command']})")
+        time.sleep(1.5)  # Give the inverter a moment before re-reading
+        fresh = continuous_reader.refresh_config()
+        return jsonify({
+            'success': True,
+            'previous': before,
+            'applied': result,
+            'config': fresh,
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"set_output_priority failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/reports')

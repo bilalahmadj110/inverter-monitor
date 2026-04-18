@@ -1,12 +1,13 @@
 import threading
 import time
 import logging
-from inverter_status import get_inverter_status, get_device_mode, get_warning_status
+from inverter_status import get_inverter_status, get_device_mode, get_warning_status, get_inverter_config
 
 logger = logging.getLogger(__name__)
 
 CYCLE_SECONDS = 3.0
 EXTRAS_INTERVAL_SECONDS = 30.0
+CONFIG_INTERVAL_SECONDS = 60.0
 
 
 class ContinuousReader:
@@ -26,8 +27,10 @@ class ContinuousReader:
 
         self._mode = None
         self._warnings = []
+        self._config = {}
         self._extras_lock = threading.Lock()
         self._last_extras_time = 0.0
+        self._last_config_time = 0.0
 
         self.total_readings = 0
         self.error_count = 0
@@ -65,9 +68,27 @@ class ContinuousReader:
             self._warnings = warnings
             self._last_extras_time = time.time()
 
+    def get_config(self):
+        with self._extras_lock:
+            return dict(self._config)
+
+    def refresh_config(self):
+        try:
+            cfg = get_inverter_config()
+            if cfg:
+                with self._extras_lock:
+                    self._config = cfg
+                    self._last_config_time = time.time()
+            return cfg
+        except Exception as e:
+            logger.warning(f"Config refresh failed: {e}")
+            return {}
+
     def _extras_loop(self):
-        """Slow poll for QMOD + QPIWS. Non-fatal on failure."""
+        """Slow poll for QMOD + QPIWS, plus QPIRI at a slower cadence. Non-fatal on failure."""
         logger.info("Extras poller started")
+        ticks = 0
+        config_every = max(1, int(CONFIG_INTERVAL_SECONDS // EXTRAS_INTERVAL_SECONDS))
         while self.running:
             try:
                 mode = get_device_mode()
@@ -75,6 +96,9 @@ class ContinuousReader:
                 self._set_extras(mode, warnings)
                 if mode:
                     logger.debug(f"Extras: mode={mode}, warnings={len(warnings)}")
+                if ticks % config_every == 0:
+                    self.refresh_config()
+                ticks += 1
             except Exception as e:
                 logger.warning(f"Extras poll failed: {e}")
             for _ in range(int(EXTRAS_INTERVAL_SECONDS)):

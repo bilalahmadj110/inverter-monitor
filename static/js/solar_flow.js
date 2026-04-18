@@ -18,6 +18,7 @@ class SolarFlowDashboard {
 
         this.initializeSocketEvents();
         this.initializeWarningBanner();
+        this.initializePriorityPanel();
         this.startUpdateTimer();
     }
 
@@ -240,6 +241,7 @@ class SolarFlowDashboard {
 
     updateStatsPayload(data) {
         if (!data) return;
+        if (data.config) this.renderConfig(data.config);
         if (data.summary) this.renderTodaySummary(data.summary);
         if (data.reading_stats) {
             this.updateElement('reading-total', data.reading_stats.total_readings || 0);
@@ -248,6 +250,65 @@ class SolarFlowDashboard {
         if (data.day && data.day.temperature_max != null) {
             this.updateElement('temp-max', Math.round(data.day.temperature_max));
         }
+    }
+
+    renderConfig(config) {
+        const pill = document.getElementById('priority-pill-label');
+        const current = document.getElementById('priority-current');
+        const p = (config && config.output_priority) || '—';
+        if (pill) pill.textContent = p;
+        if (current) current.textContent = config && config.output_priority_raw ? `${p} (${config.output_priority_raw})` : p;
+    }
+
+    initializePriorityPanel() {
+        const pill = document.getElementById('priority-pill');
+        const panel = document.getElementById('priority-panel');
+        const closeBtn = document.getElementById('priority-close');
+        const status = document.getElementById('priority-status');
+        const pwWrap = document.getElementById('priority-password-wrap');
+        const pwInput = document.getElementById('priority-password');
+        if (!pill || !panel) return;
+
+        let passwordRequired = false;
+        fetch('/config').then((r) => r.json()).then((data) => {
+            passwordRequired = !!(data && data.password_required);
+            pwWrap.classList.toggle('hidden', !passwordRequired);
+            if (data && data.config) this.renderConfig(data.config);
+        }).catch(() => {});
+
+        pill.addEventListener('click', () => panel.classList.toggle('hidden'));
+        closeBtn.addEventListener('click', () => panel.classList.add('hidden'));
+
+        document.querySelectorAll('.priority-btn').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const mode = btn.dataset.prio;
+                const label = btn.querySelector('.font-semibold').textContent;
+                if (!confirm(`Set output priority to ${label}? This changes how the inverter routes power.`)) return;
+                status.textContent = 'Sending…';
+                status.className = 'text-xs text-white/70';
+                try {
+                    const body = { mode };
+                    if (passwordRequired) body.password = pwInput.value || '';
+                    const res = await fetch('/set-output-priority', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                    });
+                    const data = await res.json();
+                    if (!res.ok || data.error) {
+                        status.textContent = `Failed: ${data.error || res.statusText}`;
+                        status.className = 'text-xs text-red-300';
+                        return;
+                    }
+                    status.textContent = `Changed to ${data.applied.mode} · ${data.applied.label}`;
+                    status.className = 'text-xs text-emerald-300';
+                    if (data.config) this.renderConfig(data.config);
+                } catch (err) {
+                    status.textContent = `Error: ${err.message}`;
+                    status.className = 'text-xs text-red-300';
+                }
+            });
+        });
     }
 
     renderTodaySummary(s) {

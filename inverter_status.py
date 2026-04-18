@@ -195,6 +195,64 @@ def get_device_mode():
     return None
 
 
+OUTPUT_PRIORITY_COMMANDS = {
+    'UTI': ('POP00', 'Utility first'),
+    'SOL': ('POP01', 'Solar first'),
+    'SBU': ('POP02', 'SBU (Solar → Battery → Utility)'),
+}
+
+
+def _normalize_output_priority(raw):
+    """Map whatever QPIRI reports to our canonical UTI/SOL/SBU."""
+    if not raw:
+        return None
+    r = raw.strip().lower()
+    if 'sbu' in r:
+        return 'SBU'
+    if 'solar' in r or 'pv' in r:
+        return 'SOL'
+    if 'utility' in r or 'grid' in r:
+        return 'UTI'
+    return raw.strip()
+
+
+def get_inverter_config():
+    """QPIRI → {output_priority, charger_priority, battery_type, ...}. Returns {} on failure."""
+    try:
+        out = _run_mpp('QPIRI', timeout=10, retries=2)
+        parsed = parse_mppsolar_output(out)
+        op_raw = parsed.get('output_source_priority', {}).get('value')
+        cp_raw = parsed.get('charger_source_priority', {}).get('value')
+        return {
+            'output_priority': _normalize_output_priority(op_raw),
+            'output_priority_raw': op_raw,
+            'charger_priority': cp_raw,
+            'battery_type': parsed.get('battery_type', {}).get('value'),
+            'max_charging_current': parsed.get('max_charging_current', {}).get('value'),
+            'max_ac_charging_current': parsed.get('max_ac_charging_current', {}).get('value'),
+            'battery_under_voltage': parsed.get('battery_under_voltage', {}).get('value'),
+            'battery_bulk_charge_voltage': parsed.get('battery_bulk_charge_voltage', {}).get('value'),
+            'battery_float_charge_voltage': parsed.get('battery_float_charge_voltage', {}).get('value'),
+        }
+    except Exception as e:
+        logger.debug(f"QPIRI unavailable: {e}")
+        return {}
+
+
+def set_output_priority(mode):
+    """Set output source priority via POP command. `mode` must be UTI, SOL, or SBU."""
+    mode = (mode or '').strip().upper()
+    if mode not in OUTPUT_PRIORITY_COMMANDS:
+        raise ValueError(f"Invalid mode '{mode}'. Must be one of {list(OUTPUT_PRIORITY_COMMANDS)}")
+    cmd_code, label = OUTPUT_PRIORITY_COMMANDS[mode]
+    logger.info(f"Setting output priority to {mode} ({label}) via {cmd_code}")
+    out = _run_mpp(cmd_code, timeout=10, retries=3)
+    lower = (out or '').lower()
+    if 'nak' in lower or 'error' in lower:
+        raise RuntimeError(f"Inverter rejected {cmd_code}: {out.strip()[:160]}")
+    return {'mode': mode, 'label': label, 'command': cmd_code, 'response': out.strip()[:200]}
+
+
 def get_warning_status():
     """QPIWS -> list of active warnings [{key,label,severity}]. Empty if not parseable."""
     try:

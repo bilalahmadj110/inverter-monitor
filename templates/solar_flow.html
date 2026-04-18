@@ -160,6 +160,42 @@
                 <i class="fas fa-plug text-xs"></i>
                 <span id="grid-pill-label">Grid</span>
             </span>
+            <button id="priority-pill"
+                    class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-purple-500/20 text-purple-100 border border-white/10 hover:bg-purple-500/30 transition-colors">
+                <i class="fas fa-sliders text-xs"></i>
+                Output: <span id="priority-pill-label">—</span>
+                <i class="fas fa-chevron-down text-xs opacity-70"></i>
+            </button>
+        </div>
+
+        <!-- Output Priority Control Panel -->
+        <div id="priority-panel" class="hidden max-w-xl mx-auto mt-4 bg-black/40 backdrop-blur-sm rounded-lg p-4 border border-white/10 text-left">
+            <div class="flex items-center justify-between mb-3">
+                <div>
+                    <div class="text-white font-semibold text-sm">Change Output Priority</div>
+                    <div class="text-white/60 text-xs mt-0.5">Current: <span id="priority-current">—</span></div>
+                </div>
+                <button id="priority-close" class="text-white/60 hover:text-white text-sm"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mb-3">
+                <button data-prio="SBU" class="priority-btn bg-white/10 hover:bg-purple-500/40 text-white text-sm py-2 rounded-lg transition-colors">
+                    <div class="font-semibold">SBU</div>
+                    <div class="text-[10px] text-white/60">Solar → Battery → Grid</div>
+                </button>
+                <button data-prio="SOL" class="priority-btn bg-white/10 hover:bg-purple-500/40 text-white text-sm py-2 rounded-lg transition-colors">
+                    <div class="font-semibold">SOL</div>
+                    <div class="text-[10px] text-white/60">Solar → Grid → Battery</div>
+                </button>
+                <button data-prio="UTI" class="priority-btn bg-white/10 hover:bg-purple-500/40 text-white text-sm py-2 rounded-lg transition-colors">
+                    <div class="font-semibold">UTI</div>
+                    <div class="text-[10px] text-white/60">Grid first</div>
+                </button>
+            </div>
+            <div id="priority-password-wrap" class="hidden mb-3">
+                <label class="text-white/70 text-xs">Admin password</label>
+                <input type="password" id="priority-password" class="w-full mt-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm" placeholder="Required to make changes">
+            </div>
+            <div id="priority-status" class="text-xs text-white/70"></div>
         </div>
         <button onclick="dashboard.requestManualUpdate()"
                 class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200">
