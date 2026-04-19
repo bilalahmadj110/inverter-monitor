@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from flask import (
     Blueprint, request, session, redirect, url_for, render_template,
-    abort, current_app, jsonify, g,
+    current_app, jsonify,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 
