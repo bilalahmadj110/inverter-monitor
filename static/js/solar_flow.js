@@ -302,7 +302,10 @@ class SolarFlowDashboard {
         this.currentModal = component;
         this.rerenderCurrentModal();
         document.getElementById('component-modal').classList.remove('hidden');
-        if (this.needsConfig(component)) {
+        // Only talk to the inverter's USB if we don't already have config. Page-load
+        // already ran refreshExtras() via initializeComponentModals, and write ops
+        // return fresh QPIRI inline — so repeat sheet opens no longer need to re-query.
+        if (this.needsConfig(component) && !this.hasConfig()) {
             this.refreshExtras();
         }
     }
