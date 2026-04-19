@@ -102,6 +102,19 @@
                 <button id="day-prev" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white"><i class="fas fa-chevron-left"></i></button>
                 <button id="day-next" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white"><i class="fas fa-chevron-right"></i></button>
                 <button id="day-today" class="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white">Today</button>
+                <div class="ml-auto relative">
+                    <button id="day-export-toggle" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white inline-flex items-center gap-2">
+                        <i class="fas fa-download"></i> Export
+                    </button>
+                    <div id="day-export-menu" class="hidden absolute right-0 mt-1 w-56 bg-gray-900 border border-white/15 rounded-lg shadow-xl z-30 py-1">
+                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="csv" data-bucket="">Raw 3s · CSV</button>
+                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="json" data-bucket="">Raw 3s · JSON</button>
+                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="csv" data-bucket="60">1-min · CSV</button>
+                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="json" data-bucket="60">1-min · JSON</button>
+                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="csv" data-bucket="300">5-min · CSV</button>
+                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="json" data-bucket="300">5-min · JSON</button>
+                    </div>
+                </div>
             </div>
 
             <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -429,6 +442,32 @@
         document.getElementById('day-next').addEventListener('click', () => {
             const d = new Date(document.getElementById('day-date').value); d.setDate(d.getDate() + 1); loadDay(isoDate(d));
         });
+
+        // Export menu (Day tab) — toggles a dropdown that triggers a download.
+        (function () {
+            const toggle = document.getElementById('day-export-toggle');
+            const menu = document.getElementById('day-export-menu');
+            if (!toggle || !menu) return;
+            toggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menu.classList.toggle('hidden');
+            });
+            document.addEventListener('click', (e) => {
+                if (!menu.contains(e.target) && e.target !== toggle) menu.classList.add('hidden');
+            });
+            menu.querySelectorAll('.export-action').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const date = document.getElementById('day-date').value || todayStr();
+                    const fmt = btn.dataset.format || 'csv';
+                    const bucket = btn.dataset.bucket || '';
+                    const params = new URLSearchParams({ from: date, to: date, format: fmt });
+                    if (bucket) params.set('bucket', bucket);
+                    // Trigger a real download in the browser by navigating to the URL.
+                    window.location.href = `/export-readings?${params.toString()}`;
+                    menu.classList.add('hidden');
+                });
+            });
+        })();
 
         // ============ MONTH TAB ============
         const monthChart = new Chart(document.getElementById('month-chart'), {

@@ -870,6 +870,65 @@ class PowerStats:
         except Exception:
             pass
 
+    def get_readings_range(self, from_date=None, to_date=None, bucket_seconds=None, max_rows=200000):
+        """Yield raw or bucketed readings between two dates (inclusive). If bucket_seconds is
+        None or <=3, returns raw rows. Used by the export endpoint."""
+        try:
+            if from_date:
+                start_dt = datetime.strptime(from_date, '%Y-%m-%d')
+            else:
+                start_dt = datetime.now() - timedelta(days=1)
+            if to_date:
+                end_dt = datetime.strptime(to_date, '%Y-%m-%d') + timedelta(days=1)
+            else:
+                end_dt = datetime.now() + timedelta(seconds=1)
+            start_ts = int(start_dt.timestamp())
+            end_ts = int(end_dt.timestamp())
+
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                if bucket_seconds and int(bucket_seconds) > 3:
+                    bs = max(3, min(int(bucket_seconds), 3600))
+                    cursor.execute(f'''
+                    SELECT
+                        (timestamp / {bs}) * {bs} AS timestamp,
+                        AVG(solar_power) AS solar_power,
+                        AVG(grid_power) AS grid_power,
+                        AVG(load_power) AS load_power,
+                        AVG(battery_power) AS battery_power,
+                        AVG(battery_percentage) AS battery_percentage,
+                        AVG(grid_voltage) AS grid_voltage,
+                        COUNT(*) AS sample_count
+                    FROM power_readings
+                    WHERE timestamp >= ? AND timestamp < ?
+                    GROUP BY (timestamp / {bs})
+                    ORDER BY timestamp ASC
+                    LIMIT ?
+                    ''', (start_ts, end_ts, max_rows))
+                else:
+                    cursor.execute('''
+                    SELECT timestamp, solar_power, grid_power, load_power,
+                           battery_power, battery_percentage, grid_voltage,
+                           (end_timestamp - start_timestamp) * 1000 AS duration_ms
+                    FROM power_readings
+                    WHERE timestamp >= ? AND timestamp < ?
+                    ORDER BY timestamp ASC
+                    LIMIT ?
+                    ''', (start_ts, end_ts, max_rows))
+                rows = cursor.fetchall()
+                return {
+                    'from': datetime.fromtimestamp(start_ts).strftime('%Y-%m-%d'),
+                    'to': datetime.fromtimestamp(end_ts - 1).strftime('%Y-%m-%d'),
+                    'bucket_seconds': int(bucket_seconds) if bucket_seconds else 3,
+                    'count': len(rows),
+                    'truncated': len(rows) >= max_rows,
+                    'rows': [dict(r) for r in rows],
+                }
+        except Exception as e:
+            logger.error(f"Error getting readings range: {e}")
+            return {'rows': [], 'count': 0, 'error': str(e)}
+
     def get_raw_readings(self, page=1, page_size=25):
         try:
             offset = (page - 1) * page_size

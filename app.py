@@ -269,37 +269,53 @@ def get_raw_data():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/export-data')
+@app.route('/export-readings')
 @login_required
-def export_data():
+@limiter.limit('20 per minute')
+def export_readings():
+    """Export raw or bucketed readings between two dates as CSV or JSON.
+    Query params: from=YYYY-MM-DD, to=YYYY-MM-DD, format=csv|json, bucket=seconds (optional)."""
+    from_date = request.args.get('from')
+    to_date = request.args.get('to') or from_date
+    fmt = (request.args.get('format') or 'csv').lower()
+    bucket_arg = request.args.get('bucket')
     try:
-        import csv
-        import io
+        bucket = int(bucket_arg) if bucket_arg else None
+    except (TypeError, ValueError):
+        bucket = None
+    data = stats_manager.get_readings_range(from_date, to_date, bucket)
+    label = f"{data.get('from', 'unknown')}_to_{data.get('to', 'unknown')}"
+    if fmt == 'json':
         from flask import Response
-        data, _ = stats_manager.get_raw_readings(1, 10000)
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(['Timestamp', 'Solar Power (W)', 'Grid Power (W)', 'Battery (%)',
-                         'Battery Power (W)', 'Load Power (W)', 'Duration (ms)'])
-        for row in data:
-            writer.writerow([
-                row['timestamp_formatted'],
-                row['solar_power'],
-                row.get('grid_power', 0),
-                row['battery_percentage'],
-                row.get('battery_power', 0),
-                row['load_power'],
-                row['duration_ms'],
-            ])
-        output.seek(0)
+        import json as _json
         return Response(
-            output.getvalue(),
-            mimetype='text/csv',
-            headers={'Content-Disposition': 'attachment; filename=inverter_data.csv'},
+            _json.dumps(data, indent=2),
+            mimetype='application/json',
+            headers={'Content-Disposition': f'attachment; filename=inverter_{label}.json'},
         )
-    except Exception as e:
-        logger.error(f"Error exporting data: {e}")
-        return jsonify({'error': str(e)}), 500
+    # CSV
+    import csv
+    import io
+    from flask import Response
+    output = io.StringIO()
+    writer = csv.writer(output)
+    rows = data.get('rows', [])
+    if rows:
+        cols = list(rows[0].keys())
+        writer.writerow(['timestamp_iso'] + cols)
+        from datetime import datetime as _dt
+        for r in rows:
+            iso = _dt.fromtimestamp(r['timestamp']).isoformat() if r.get('timestamp') else ''
+            writer.writerow([iso] + [r.get(c, '') for c in cols])
+    else:
+        writer.writerow(['timestamp_iso', 'note'])
+        writer.writerow(['', 'no readings in range'])
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=inverter_{label}.csv'},
+    )
 
 
 @app.route('/config')
