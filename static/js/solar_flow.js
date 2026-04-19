@@ -1,3 +1,8 @@
+function csrfToken() {
+    const m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.getAttribute('content') : '';
+}
+
 class SolarFlowDashboard {
     constructor() {
         this.socket = io();
@@ -318,7 +323,7 @@ class SolarFlowDashboard {
             this._setExtrasLoading(true);
             try {
                 const [extrasRes, configRes] = await Promise.all([
-                    fetch('/refresh-extras', { method: 'POST' }),
+                    fetch('/refresh-extras', { method: 'POST', headers: { 'X-CSRFToken': csrfToken() } }),
                     fetch('/config'),
                 ]);
                 const extras = await extrasRes.json();
@@ -525,11 +530,8 @@ class SolarFlowDashboard {
     }
 
     buildPasswordFieldHTML() {
-        if (!this.passwordRequired) return '';
-        return `
-            <section><h3>Admin Password</h3>
-                <input type="password" id="modal-password" class="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white text-sm" placeholder="Required to apply changes">
-            </section>`;
+        // Authentication is handled at the session level — no per-action password needed.
+        return '';
     }
 
     attachModalHandlers() {
@@ -554,14 +556,13 @@ class SolarFlowDashboard {
         if (!confirm(`Apply change: ${label}?`)) return;
 
         const toast = document.getElementById('modal-toast');
-        const password = (document.getElementById('modal-password') || {}).value || '';
         if (toast) { toast.className = 'toast info'; toast.textContent = 'Sending…'; }
 
         try {
             const res = await fetch(endpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode, password }),
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+                body: JSON.stringify({ mode }),
             });
             const data = await res.json();
             if (!res.ok || data.error || data.success === false) {

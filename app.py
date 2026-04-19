@@ -1,5 +1,8 @@
-from flask import Flask, render_template, request, jsonify
-from flask_socketio import SocketIO, emit
+from flask import Flask, render_template, request, jsonify, session
+from flask_socketio import SocketIO, emit, disconnect
+from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import threading
 import time
 import os
@@ -11,12 +14,10 @@ from inverter_status import (
     set_output_priority, set_charger_priority,
     OUTPUT_PRIORITY_COMMANDS, CHARGER_PRIORITY_COMMANDS,
 )
-
-ADMIN_PASSWORD = os.environ.get('INVERTER_ADMIN_PASSWORD', '').strip()
+from auth import init_auth, login_required, is_logged_in, audit
 
 
 def _resolve_version():
-    """Short git SHA baked in at startup — used as a deploy marker in the UI."""
     here = os.path.dirname(os.path.abspath(__file__))
     try:
         sha = subprocess.check_output(
@@ -30,12 +31,36 @@ def _resolve_version():
 
 APP_VERSION = _resolve_version()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-here'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+
+# Auth bootstraps SECRET_KEY, session cookie config, and the /login + /logout routes.
+# Refuses to start if INVERTER_ADMIN_PASSWORD or INVERTER_SECRET_KEY isn't set.
+init_auth(app)
+
+# CSRF on all state-changing routes.
+csrf = CSRFProtect(app)
+
+# Per-IP rate limiting. Lenient defaults for reads, strict overrides on auth and writes.
+def _client_key():
+    cf = request.headers.get('CF-Connecting-IP')
+    if cf:
+        return cf
+    return get_remote_address()
+
+limiter = Limiter(app=app, key_func=_client_key, default_limits=['120 per minute', '2000 per hour'])
+
+# Restrict CORS to the same origin (no third-party WebSocket clients).
+ALLOWED_ORIGINS = os.environ.get('ALLOWED_ORIGINS', '').strip()
+allowed = [o.strip() for o in ALLOWED_ORIGINS.split(',') if o.strip()] if ALLOWED_ORIGINS else None
+socketio = SocketIO(
+    app,
+    cors_allowed_origins=allowed if allowed else [],  # empty list = same-origin only
+    async_mode='threading',
+    manage_session=False,  # use Flask's secure cookie session
+)
 
 background_thread = None
 thread_lock = threading.Lock()
@@ -45,8 +70,34 @@ continuous_reader = ContinuousReader(stats_manager)
 
 
 @app.context_processor
-def _inject_version():
-    return {'app_version': APP_VERSION}
+def _inject_template_globals():
+    return {'app_version': APP_VERSION, 'csrf_token': generate_csrf}
+
+
+@app.after_request
+def _security_headers(resp):
+    # CSP: allow our specific CDNs (tailwind, font-awesome, chart.js, socket.io). Inline scripts
+    # are needed for the page-level <script> blocks; we use a nonce-free policy because there's
+    # only one origin and no user-generated HTML in scope.
+    resp.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+        "img-src 'self' data:; "
+        "font-src 'self' https://cdnjs.cloudflare.com data:; "
+        "connect-src 'self' ws: wss:; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('X-Frame-Options', 'DENY')
+    resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    resp.headers.setdefault('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+    if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https':
+        resp.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    return resp
 
 
 def _build_stats_payload():
@@ -69,7 +120,6 @@ def background_data_update():
         try:
             if not continuous_reader.running:
                 continuous_reader.start()
-
             status = continuous_reader.get_latest_data()
             if status:
                 socketio.emit('inverter_update', status)
@@ -82,17 +132,38 @@ def background_data_update():
         time.sleep(3)
 
 
+# Stricter limit for the login route — protects against credential stuffing.
+limiter.limit('5 per minute; 30 per hour')(app.view_functions['auth.login'])
+
+
+@app.route('/healthz')
+@limiter.exempt
+def healthz():
+    return jsonify({'ok': True, 'version': APP_VERSION})
+
+
 @app.route('/')
+@login_required
 def dashboard():
     return render_template('solar_flow.html')
 
 
 @app.route('/classic')
+@login_required
 def classic_dashboard():
     return render_template('dashboard.html')
 
 
+@app.route('/reports')
+@login_required
+def reports():
+    return render_template('history.html')
+
+
+# ---- Read-only JSON endpoints (login required, generous rate limit) -----------------------
+
 @app.route('/stats')
+@login_required
 def get_stats():
     period = request.args.get('period', 'all')
     if period == 'day':
@@ -105,13 +176,14 @@ def get_stats():
 
 
 @app.route('/summary')
+@login_required
 def get_summary():
     return jsonify(stats_manager.get_summary(request.args.get('date')))
 
 
 @app.route('/status')
+@login_required
 def get_status():
-    """Snapshot of the most recent reading (mirror of the WebSocket frame)."""
     latest = continuous_reader.get_latest_data()
     if not latest:
         return jsonify({'success': False, 'error': 'No reading available yet'}), 503
@@ -119,6 +191,7 @@ def get_status():
 
 
 @app.route('/warnings')
+@login_required
 def get_warnings():
     latest = continuous_reader.get_latest_data()
     system = latest.get('system') if latest else {}
@@ -131,6 +204,7 @@ def get_warnings():
 
 
 @app.route('/history')
+@login_required
 def get_history():
     try:
         days = int(request.args.get('days', 30))
@@ -141,6 +215,7 @@ def get_history():
 
 
 @app.route('/recent-readings')
+@login_required
 def get_recent_readings():
     try:
         minutes = int(request.args.get('minutes', 30))
@@ -156,6 +231,7 @@ def get_recent_readings():
 
 
 @app.route('/day-readings')
+@login_required
 def get_day_readings():
     date = request.args.get('date') or None
     try:
@@ -167,76 +243,15 @@ def get_day_readings():
 
 
 @app.route('/outages')
+@login_required
 def get_outages():
     from_date = request.args.get('from')
     to_date = request.args.get('to')
     return jsonify(stats_manager.get_outages(from_date, to_date))
 
 
-@app.route('/recompute-daily', methods=['POST'])
-def recompute_daily():
-    day = request.args.get('day')
-    return jsonify(stats_manager.recompute_daily_stats(day))
-
-
-@app.route('/config')
-def get_config():
-    """Current inverter config (output priority, charger priority, battery thresholds, etc.).
-    Returns whatever's in cache; the UI calls /refresh-extras to force a fresh read."""
-    return jsonify({
-        'config': continuous_reader.get_config(),
-        'output_priority_options': [{'key': k, 'label': v[1]} for k, v in OUTPUT_PRIORITY_COMMANDS.items()],
-        'charger_priority_options': [{'key': k, 'label': v[1]} for k, v in CHARGER_PRIORITY_COMMANDS.items()],
-        'password_required': bool(ADMIN_PASSWORD),
-    })
-
-
-@app.route('/refresh-extras', methods=['POST', 'GET'])
-def refresh_extras():
-    """On-demand refresh of QMOD + QPIWS + QPIRI. Frontend should show a loader and
-    debounce its own clicks; the backend also debounces (2s)."""
-    return jsonify(continuous_reader.refresh_extras())
-
-
-def _apply_config_change(setter, mode_raw, label_key):
-    body = request.get_json(silent=True) or {}
-    mode = (mode_raw or body.get('mode') or request.args.get('mode') or '').upper()
-    supplied_pw = body.get('password') or request.headers.get('X-Admin-Password') or ''
-    if ADMIN_PASSWORD and supplied_pw != ADMIN_PASSWORD:
-        logger.warning(f"Unauthorized config change attempt ({label_key}, mode={mode})")
-        return jsonify({'error': 'Unauthorized'}), 401
-    try:
-        before = continuous_reader.get_config().get(label_key)
-        result = setter(mode)
-        logger.info(f"{label_key} changed: {before} -> {mode} (command={result['command']})")
-        time.sleep(1.5)
-        fresh = continuous_reader.refresh_config()
-        return jsonify({'success': True, 'previous': before, 'applied': result, 'config': fresh})
-    except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
-    except Exception as e:
-        logger.error(f"{label_key} change failed: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/set-output-priority', methods=['POST'])
-def set_output_priority_route():
-    body = request.get_json(silent=True) or {}
-    return _apply_config_change(set_output_priority, body.get('mode'), 'output_priority')
-
-
-@app.route('/set-charger-priority', methods=['POST'])
-def set_charger_priority_route():
-    body = request.get_json(silent=True) or {}
-    return _apply_config_change(set_charger_priority, body.get('mode'), 'charger_priority')
-
-
-@app.route('/reports')
-def reports():
-    return render_template('history.html')
-
-
 @app.route('/raw-data')
+@login_required
 def get_raw_data():
     page = int(request.args.get('page', 1))
     page_size = int(request.args.get('page_size', 25))
@@ -255,12 +270,12 @@ def get_raw_data():
 
 
 @app.route('/export-data')
+@login_required
 def export_data():
     try:
         import csv
         import io
         from flask import Response
-
         data, _ = stats_manager.get_raw_readings(1, 10000)
         output = io.StringIO()
         writer = csv.writer(output)
@@ -287,15 +302,79 @@ def export_data():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/config')
+@login_required
+def get_config():
+    return jsonify({
+        'config': continuous_reader.get_config(),
+        'output_priority_options': [{'key': k, 'label': v[1]} for k, v in OUTPUT_PRIORITY_COMMANDS.items()],
+        'charger_priority_options': [{'key': k, 'label': v[1]} for k, v in CHARGER_PRIORITY_COMMANDS.items()],
+    })
+
+
+# ---- Write endpoints (login required, CSRF, strict rate limit, audit log) ----------------
+
+@app.route('/refresh-extras', methods=['POST'])
+@login_required
+@limiter.limit('20 per minute')
+def refresh_extras():
+    return jsonify(continuous_reader.refresh_extras())
+
+
+@app.route('/recompute-daily', methods=['POST'])
+@login_required
+@limiter.limit('5 per minute')
+def recompute_daily():
+    day = request.args.get('day')
+    audit('recompute_daily', day=day)
+    return jsonify(stats_manager.recompute_daily_stats(day))
+
+
+def _apply_config_change(setter, label_key):
+    body = request.get_json(silent=True) or {}
+    mode = (body.get('mode') or request.args.get('mode') or '').upper()
+    try:
+        before = continuous_reader.get_config().get(label_key)
+        result = setter(mode)
+        audit('set_' + label_key, before=before, after=mode, command=result['command'])
+        time.sleep(1.5)
+        fresh = continuous_reader.refresh_config()
+        return jsonify({'success': True, 'previous': before, 'applied': result, 'config': fresh})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"{label_key} change failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/set-output-priority', methods=['POST'])
+@login_required
+@limiter.limit('10 per minute')
+def set_output_priority_route():
+    return _apply_config_change(set_output_priority, 'output_priority')
+
+
+@app.route('/set-charger-priority', methods=['POST'])
+@login_required
+@limiter.limit('10 per minute')
+def set_charger_priority_route():
+    return _apply_config_change(set_charger_priority, 'charger_priority')
+
+
+# ---- WebSocket: reject unauthenticated connections ----------------------------------------
+
 @socketio.on('connect')
 def handle_connect():
+    if not is_logged_in():
+        logger.warning("WS connect rejected: unauthenticated")
+        return False  # disconnect
     global background_thread
     with thread_lock:
         if background_thread is None:
             background_thread = threading.Thread(target=background_data_update)
             background_thread.daemon = True
             background_thread.start()
-    logger.info("Client connected")
+    logger.info(f"WS connect: user={session.get('user')}")
     status = continuous_reader.get_latest_data()
     if status:
         emit('inverter_update', status)
@@ -304,11 +383,14 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    logger.info("Client disconnected")
+    logger.info("WS disconnect")
 
 
 @socketio.on('request_update')
 def handle_request_update():
+    if not is_logged_in():
+        disconnect()
+        return
     status = continuous_reader.get_latest_data()
     if status:
         emit('inverter_update', status)
@@ -317,13 +399,17 @@ def handle_request_update():
 
 @socketio.on('request_stats')
 def handle_request_stats():
+    if not is_logged_in():
+        disconnect()
+        return
     emit('stats_update', _build_stats_payload())
 
 
 if __name__ == '__main__':
     try:
         continuous_reader.start()
-        socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
+        bind_host = os.environ.get('BIND_HOST', '0.0.0.0')
+        socketio.run(app, host=bind_host, port=5000, allow_unsafe_werkzeug=True)
     finally:
         continuous_reader.stop()
         stats_manager.cleanup()
