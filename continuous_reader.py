@@ -42,10 +42,12 @@ class ContinuousReader:
         self.running = True
         self.reader_thread = threading.Thread(target=self._read_loop, daemon=True)
         self.reader_thread.start()
-        self.extras_thread = threading.Thread(target=self._extras_loop, daemon=True)
-        self.extras_thread.start()
-        logger.info("Continuous reader started (QPIGS every %.1fs, extras every %.0fs)",
-                    CYCLE_SECONDS, EXTRAS_INTERVAL_SECONDS)
+        # Extras (QMOD / QPIWS / QPIRI) are no longer polled in a background loop —
+        # they're triggered on demand from the frontend via /refresh-extras to avoid
+        # colliding with QPIGS reads. Do one initial fetch in a thread so the first
+        # page load already has mode/warnings/config without waiting on a click.
+        threading.Thread(target=self._initial_extras_fetch, daemon=True).start()
+        logger.info("Continuous reader started (QPIGS every %.1fs, extras on demand)", CYCLE_SECONDS)
 
     def stop(self):
         self.running = False
@@ -53,6 +55,13 @@ class ContinuousReader:
             if t and t.is_alive():
                 t.join(timeout=5)
         logger.info("Continuous reader stopped")
+
+    def _initial_extras_fetch(self):
+        """Fetch mode + warnings + config once at startup so the UI isn't empty."""
+        try:
+            self.refresh_extras(min_age_seconds=0)
+        except Exception as e:
+            logger.debug(f"Initial extras fetch failed (will retry on demand): {e}")
 
     def get_latest_data(self):
         with self.data_lock:
@@ -92,27 +101,49 @@ class ContinuousReader:
             with self._extras_lock:
                 return dict(self._config)
 
-    def _extras_loop(self):
-        """Slow poll for QMOD + QPIWS, plus QPIRI at a slower cadence. Non-fatal on failure."""
-        logger.info("Extras poller started")
-        ticks = 0
-        config_every = max(1, int(CONFIG_INTERVAL_SECONDS // EXTRAS_INTERVAL_SECONDS))
-        while self.running:
-            try:
-                mode = get_device_mode()
-                warnings = get_warning_status()
-                self._set_extras(mode, warnings)
-                if mode:
-                    logger.debug(f"Extras: mode={mode}, warnings={len(warnings)}")
-                if ticks % config_every == 0:
-                    self.refresh_config()
-                ticks += 1
-            except Exception as e:
-                logger.warning(f"Extras poll failed: {e}")
-            for _ in range(int(EXTRAS_INTERVAL_SECONDS)):
-                if not self.running:
-                    return
-                time.sleep(1)
+    def refresh_extras(self, min_age_seconds=2.0):
+        """Run QMOD + QPIWS + QPIRI through the inverter lock and return the combined state.
+        Debounced: if all three were refreshed within the last `min_age_seconds`, returns the
+        cached values without re-querying."""
+        with self._extras_lock:
+            extras_age = time.time() - self._last_extras_time
+            cfg_age = time.time() - self._last_config_time
+            if extras_age < min_age_seconds and cfg_age < min_age_seconds and self._mode is not None and self._config:
+                return {
+                    'mode': self._mode,
+                    'warnings': list(self._warnings),
+                    'config': dict(self._config),
+                    'cached': True,
+                    'extras_age_s': round(extras_age, 1),
+                }
+        result = {'cached': False}
+        try:
+            mode = get_device_mode()
+            warnings = get_warning_status()
+            self._set_extras(mode, warnings)
+            result['mode'] = mode
+            result['warnings'] = warnings
+        except Exception as e:
+            logger.warning(f"refresh_extras: mode/warnings failed: {e}")
+            with self._extras_lock:
+                result['mode'] = self._mode
+                result['warnings'] = list(self._warnings)
+        try:
+            cfg = get_inverter_config()
+            if cfg:
+                with self._extras_lock:
+                    self._config = cfg
+                    self._last_config_time = time.time()
+                result['config'] = cfg
+            else:
+                with self._extras_lock:
+                    result['config'] = dict(self._config)
+        except Exception as e:
+            logger.warning(f"refresh_extras: config failed: {e}")
+            with self._extras_lock:
+                result['config'] = dict(self._config)
+        result['extras_age_s'] = 0
+        return result
 
     def _read_loop(self):
         logger.info("Starting continuous reading loop")

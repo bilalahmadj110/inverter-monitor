@@ -264,7 +264,12 @@ class SolarFlowDashboard {
     }
 
     initializeComponentModals() {
-        this.loadConfig({ retries: 5 });
+        this.refreshExtras();
+
+        const refreshBtn = document.getElementById('extras-refresh');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.refreshExtras({ force: true }));
+        }
 
         const modal = document.getElementById('component-modal');
         const card = document.getElementById('component-modal-card');
@@ -292,8 +297,8 @@ class SolarFlowDashboard {
         this.currentModal = component;
         this.rerenderCurrentModal();
         document.getElementById('component-modal').classList.remove('hidden');
-        if (this.needsConfig(component) && !this.hasConfig()) {
-            this.loadConfig({ retries: 4 });
+        if (this.needsConfig(component)) {
+            this.refreshExtras();
         }
     }
 
@@ -306,23 +311,55 @@ class SolarFlowDashboard {
         return !!(c.output_priority || c.charger_priority || (c.rows && c.rows.length));
     }
 
-    async loadConfig({ retries = 1, attempt = 0 } = {}) {
-        try {
-            const res = await fetch('/config');
-            const data = await res.json();
-            this.passwordRequired = !!(data && data.password_required);
-            if (data && data.config && Object.keys(data.config).length > 0) {
-                this.renderConfig(data.config);
-                return true;
+    async refreshExtras({ force = false } = {}) {
+        // Coalesce concurrent calls.
+        if (this._extrasInFlight) return this._extrasInFlight;
+        this._extrasInFlight = (async () => {
+            this._setExtrasLoading(true);
+            try {
+                const [extrasRes, configRes] = await Promise.all([
+                    fetch('/refresh-extras', { method: 'POST' }),
+                    fetch('/config'),
+                ]);
+                const extras = await extrasRes.json();
+                const meta = await configRes.json();
+                this.passwordRequired = !!(meta && meta.password_required);
+                if (extras && extras.config && Object.keys(extras.config).length > 0) {
+                    this.renderConfig(extras.config);
+                }
+                if (extras && extras.mode) {
+                    if (!this.latestSystem) this.latestSystem = {};
+                    this.latestSystem.mode = extras.mode;
+                    this.renderModePill(this.latestSystem);
+                }
+                if (extras && Array.isArray(extras.warnings)) {
+                    if (!this.latestSystem) this.latestSystem = {};
+                    this.latestSystem.warnings = extras.warnings;
+                    this.latestSystem.has_fault = extras.warnings.some((w) => w.severity === 'fault');
+                    this.renderWarnings(this.latestSystem);
+                }
+                if (this.currentModal === 'inverter') this.rerenderCurrentModal();
+                return extras;
+            } catch (err) {
+                console.error('refresh-extras failed', err);
+            } finally {
+                this._setExtrasLoading(false);
+                this._extrasInFlight = null;
             }
-        } catch (err) {
-            // retry on next tick
-        }
-        if (attempt + 1 < retries) {
-            const delay = Math.min(3000, 600 * Math.pow(1.6, attempt));
-            setTimeout(() => this.loadConfig({ retries, attempt: attempt + 1 }), delay);
-        }
-        return false;
+        })();
+        return this._extrasInFlight;
+    }
+
+    _setExtrasLoading(loading) {
+        const btn = document.getElementById('extras-refresh');
+        const icon = document.getElementById('extras-refresh-icon');
+        const label = document.getElementById('extras-refresh-label');
+        if (!btn) return;
+        btn.disabled = loading;
+        btn.classList.toggle('opacity-60', loading);
+        btn.classList.toggle('cursor-wait', loading);
+        if (icon) icon.classList.toggle('fa-spin', loading);
+        if (label) label.textContent = loading ? 'Reading inverter…' : 'Refresh status';
     }
 
     closeModal() {

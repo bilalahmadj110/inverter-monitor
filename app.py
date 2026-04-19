@@ -182,16 +182,20 @@ def recompute_daily():
 @app.route('/config')
 def get_config():
     """Current inverter config (output priority, charger priority, battery thresholds, etc.).
-    Forces a fresh QPIRI read if the cache is empty so the UI can recover without a full reload."""
-    cfg = continuous_reader.get_config()
-    if not cfg and request.args.get('refresh') != '0':
-        cfg = continuous_reader.refresh_config() or {}
+    Returns whatever's in cache; the UI calls /refresh-extras to force a fresh read."""
     return jsonify({
-        'config': cfg,
+        'config': continuous_reader.get_config(),
         'output_priority_options': [{'key': k, 'label': v[1]} for k, v in OUTPUT_PRIORITY_COMMANDS.items()],
         'charger_priority_options': [{'key': k, 'label': v[1]} for k, v in CHARGER_PRIORITY_COMMANDS.items()],
         'password_required': bool(ADMIN_PASSWORD),
     })
+
+
+@app.route('/refresh-extras', methods=['POST', 'GET'])
+def refresh_extras():
+    """On-demand refresh of QMOD + QPIWS + QPIRI. Frontend should show a loader and
+    debounce its own clicks; the backend also debounces (2s)."""
+    return jsonify(continuous_reader.refresh_extras())
 
 
 def _apply_config_change(setter, mode_raw, label_key):
