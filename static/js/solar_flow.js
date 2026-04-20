@@ -45,6 +45,7 @@ class SolarFlowDashboard {
         this.socket.on('inverter_update', (data) => {
             this.lastUpdate = new Date();
             this.updateSystem(data);
+            window.dispatchEvent(new CustomEvent('inverter_update', { detail: data }));
         });
         this.socket.on('stats_update', (data) => {
             this.updateStatsPayload(data);

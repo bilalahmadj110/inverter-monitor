@@ -668,18 +668,40 @@
         buttons.forEach((b) => b.addEventListener('click', () => loadData(Number(b.dataset.min))));
         loadData(30);
 
-        // Data refresh: short window = faster cadence, long window = every 10s.
-        // Server-side bucketing is cheap, so polling more often is fine.
-        function refreshCadence() {
-            return rangeMinutes <= 5 ? 3000 : rangeMinutes <= 30 ? 5000 : 10000;
+        // Trim any points older than the visible window so the arrays don't grow unbounded.
+        function trimOld() {
+            const cutoff = Date.now() - rangeMinutes * 60 * 1000;
+            chart.data.datasets.forEach((ds) => {
+                // Drop leading points older than cutoff. Arrays are time-ordered.
+                while (ds.data.length && ds.data[0].x < cutoff) ds.data.shift();
+            });
         }
-        let dataTimer = setInterval(() => loadData(rangeMinutes), refreshCadence());
-        buttons.forEach((b) => b.addEventListener('click', () => {
-            clearInterval(dataTimer);
-            dataTimer = setInterval(() => loadData(rangeMinutes), refreshCadence());
-        }));
 
-        // Smooth scroll: shift the visible window every second so "now" is always at the right edge.
+        // Live append: every inverter_update from the WebSocket pushes one point per metric.
+        // min/max bands get the same value, so the band tapers cleanly into the live segment.
+        window.addEventListener('inverter_update', (ev) => {
+            const d = ev.detail;
+            if (!d || !d.success || !d.metrics) return;
+            const t = Date.now();
+            const m = d.metrics;
+            const values = {
+                solar: m.solar && m.solar.power,
+                grid: m.grid && m.grid.power,
+                load: m.load && (m.load.active_power != null ? m.load.active_power : m.load.power),
+                battery: m.battery && m.battery.power,
+            };
+            metrics.forEach((metric) => {
+                const v = Number(values[metric.key]) || 0;
+                const mi = idx[metric.key];
+                chart.data.datasets[mi.min].data.push({ x: t, y: v });
+                chart.data.datasets[mi.max].data.push({ x: t, y: v });
+                chart.data.datasets[mi.avg].data.push({ x: t, y: v });
+            });
+            trimOld();
+            rollAxis();  // also calls chart.update('none')
+        });
+
+        // Rolling axis only — no periodic HTTP refresh. HTTP reloads happen on range change.
         setInterval(rollAxis, 1000);
     })();
     </script>
