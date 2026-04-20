@@ -5,7 +5,7 @@ from inverter_status import get_inverter_status, get_device_mode, get_warning_st
 
 logger = logging.getLogger(__name__)
 
-CYCLE_SECONDS = 3.0
+IDLE_YIELD_SECONDS = 0.005  # CPU yield between reads; not a rate limiter
 EXTRAS_INTERVAL_SECONDS = 30.0
 CONFIG_INTERVAL_SECONDS = 60.0
 
@@ -17,8 +17,9 @@ class ContinuousReader:
     isn't blocked by extra serial commands. Latest mode/warnings are merged
     into every QPIGS reading before it's cached + recorded.
     """
-    def __init__(self, stats_manager):
+    def __init__(self, stats_manager, on_reading=None):
         self.stats_manager = stats_manager
+        self.on_reading = on_reading  # fired after every successful read: on_reading(status, total_readings)
         self.running = False
         self.reader_thread = None
         self.extras_thread = None
@@ -47,7 +48,7 @@ class ContinuousReader:
         # colliding with QPIGS reads. Do one initial fetch in a thread so the first
         # page load already has mode/warnings/config without waiting on a click.
         threading.Thread(target=self._initial_extras_fetch, daemon=True).start()
-        logger.info("Continuous reader started (QPIGS every %.1fs, extras on demand)", CYCLE_SECONDS)
+        logger.info("Continuous reader started (QPIGS back-to-back, extras on demand)")
 
     def stop(self):
         self.running = False
@@ -148,7 +149,6 @@ class ContinuousReader:
     def _read_loop(self):
         logger.info("Starting continuous reading loop")
         while self.running:
-            cycle_start = time.monotonic()
             try:
                 mode, warnings = self._get_extras()
                 status = get_inverter_status(mode=mode, warnings=warnings)
@@ -164,7 +164,7 @@ class ContinuousReader:
                         status['timing']['start_time'],
                         status['timing']['end_time'],
                     )
-                    if self.total_readings % 20 == 0:
+                    if self.total_readings % 100 == 0:
                         d_ms = status['timing']['duration_ms']
                         logger.info(f"Reading #{self.total_readings}: {d_ms:.1f}ms - "
                                     f"Solar: {status['metrics']['solar']['power']}W, "
@@ -175,22 +175,22 @@ class ContinuousReader:
                     logger.warning(f"Failed reading #{self.total_readings}: "
                                    f"{status.get('error', 'Unknown error')}")
 
-                if self.total_readings % 100 == 0:
+                if self.on_reading is not None:
+                    try:
+                        self.on_reading(status, self.total_readings)
+                    except Exception as cb_err:
+                        logger.warning(f"on_reading callback failed: {cb_err}")
+
+                if self.total_readings % 500 == 0:
                     err_rate = (self.error_count / self.total_readings) * 100
                     logger.info(f"Reader @ #{self.total_readings}: error rate {err_rate:.1f}%")
 
             except Exception as e:
                 self.error_count += 1
                 logger.error(f"Error in reading loop: {e}")
-                time.sleep(1)
+                time.sleep(0.2)  # brief back-off only on unexpected error
 
-            elapsed = time.monotonic() - cycle_start
-            sleep_for = CYCLE_SECONDS - elapsed
-            if sleep_for < 0.1:
-                sleep_for = 0.1
-            end_at = time.monotonic() + sleep_for
-            while self.running and time.monotonic() < end_at:
-                time.sleep(min(0.5, end_at - time.monotonic()))
+            time.sleep(IDLE_YIELD_SECONDS)
 
     def get_statistics(self):
         error_rate = (self.error_count / max(1, self.total_readings))

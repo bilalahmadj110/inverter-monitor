@@ -3,7 +3,6 @@ from flask_socketio import SocketIO, emit, disconnect
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-import threading
 import time
 import os
 import subprocess
@@ -62,11 +61,18 @@ socketio = SocketIO(
     manage_session=False,  # use Flask's secure cookie session
 )
 
-background_thread = None
-thread_lock = threading.Lock()
-
 stats_manager = power_stats.get_instance()
-continuous_reader = ContinuousReader(stats_manager)
+
+
+def _on_reading(status, total_readings):
+    """Fired for every successful inverter read. Push to WebSocket clients;
+    fold in a full stats payload every 100th reading."""
+    socketio.emit('inverter_update', status)
+    if total_readings % 100 == 0:
+        socketio.emit('stats_update', _build_stats_payload())
+
+
+continuous_reader = ContinuousReader(stats_manager, on_reading=_on_reading)
 
 
 @app.context_processor
@@ -111,25 +117,6 @@ def _build_stats_payload():
     all_stats['system'] = latest.get('system') if latest else None
     all_stats['config'] = continuous_reader.get_config()
     return all_stats
-
-
-def background_data_update():
-    logger.info("Starting background WebSocket update thread")
-    stats_update_counter = 0
-    while True:
-        try:
-            if not continuous_reader.running:
-                continuous_reader.start()
-            status = continuous_reader.get_latest_data()
-            if status:
-                socketio.emit('inverter_update', status)
-                stats_update_counter += 1
-                if stats_update_counter >= 20:
-                    socketio.emit('stats_update', _build_stats_payload())
-                    stats_update_counter = 0
-        except Exception as e:
-            logger.error(f"Error in background update: {e}")
-        time.sleep(3)
 
 
 # Stricter limit for the login route — protects against credential stuffing.
@@ -384,12 +371,8 @@ def handle_connect():
     if not is_logged_in():
         logger.warning("WS connect rejected: unauthenticated")
         return False  # disconnect
-    global background_thread
-    with thread_lock:
-        if background_thread is None:
-            background_thread = threading.Thread(target=background_data_update)
-            background_thread.daemon = True
-            background_thread.start()
+    if not continuous_reader.running:
+        continuous_reader.start()
     logger.info(f"WS connect: user={session.get('user')}")
     status = continuous_reader.get_latest_data()
     if status:
