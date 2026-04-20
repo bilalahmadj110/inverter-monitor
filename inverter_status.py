@@ -1,24 +1,19 @@
 import json
-import re
-import subprocess
 import logging
-import threading
+import re
 import time
+
+from lib.pi30_hid import get_default_reader
+from lib.pi30_parse import parse_qmod, parse_qpigs, parse_qpiri, parse_qpiws
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MPP_BIN = '/home/bilal/Desktop/Inverter/.venv/bin/mpp-solar'
 MPP_PORT = '/dev/hidraw0'
-MPP_PROTOCOL = 'PI30'
 
 INVERTER_EFFICIENCY = 0.92
 GRID_ESTIMATE_TOLERANCE_W = 15
 GRID_PRESENT_MIN_VOLTAGE = 180
-
-# PI30 is half-duplex over a single HID device. Serialize every mpp-solar
-# invocation so QPIGS (fast loop) and QMOD/QPIWS (slow loop) can't collide.
-_mpp_lock = threading.Lock()
 
 MODE_LABELS = {
     'P': 'Power On',
@@ -66,130 +61,25 @@ WARNING_MAP = [
 ]
 
 
-def parse_value(value_str, unit):
-    if unit == 'bool':
-        return bool(int(value_str))
-    try:
-        if '.' in value_str:
-            return float(value_str)
-        return int(value_str)
-    except ValueError:
-        return value_str
-
-
-def parse_icon(icon_str):
-    try:
-        return json.loads(icon_str.replace("'", '"'))
-    except Exception:
-        return None
-
-
-def parse_mppsolar_output(raw_text):
-    lines = raw_text.strip().splitlines()
-    data = {}
-
-    start_idx = 0
-    for i, line in enumerate(lines):
-        if 'Parameter' in line and 'Value' in line and 'Unit' in line:
-            start_idx = i + 1
-            break
-
-    for line in lines[start_idx:]:
-        line = line.strip()
-        if line.startswith('---') or not line:
-            break
-        if len(line.split()) < 2:
-            continue
-
-        icon_data = None
-        if '{' in line and '}' in line:
-            m = re.search(r"\{'icon':\s*'[^']+'\}", line)
-            if m:
-                icon_data = parse_icon(m.group())
-                line = line[:m.start()].strip()
-
-        parts = line.split()
-        if len(parts) < 2:
-            continue
-
-        if len(parts) == 2:
-            parameter = parts[0]
-            value_str = parts[1]
-            unit = 'bool' if value_str in ['0', '1'] else ''
-        else:
-            parameter = parts[0]
-            value_str = parts[1]
-            unit = parts[2]
-            try:
-                float(parts[1])
-            except ValueError:
-                for i in range(1, len(parts)):
-                    try:
-                        float(parts[i])
-                        parameter = '_'.join(parts[:i])
-                        value_str = parts[i]
-                        unit = parts[i + 1] if i + 1 < len(parts) else ''
-                        break
-                    except ValueError:
-                        continue
-
-        parsed_value = parse_value(value_str, unit)
-        entry = {'value': parsed_value}
-        if unit and unit != 'bool' and not unit.startswith("'"):
-            entry['unit'] = unit
-        if icon_data:
-            entry['icon'] = icon_data
-        data[parameter] = entry
-
-    return data
-
-
-_VALIDITY_ERROR_RE = re.compile(r'validity_check\s+Error', re.IGNORECASE)
-
-
-def _run_mpp(command_code, timeout=15, retries=5):
-    cmd = [MPP_BIN, '-p', MPP_PORT, '-P', MPP_PROTOCOL, '-c', command_code]
-    last_err = None
-    for attempt in range(retries):
-        try:
-            with _mpp_lock:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            if result.returncode == 0:
-                if _VALIDITY_ERROR_RE.search(result.stdout or ''):
-                    snippet = ' '.join((result.stdout or '').split())[-120:]
-                    last_err = f"validity error: {snippet}"
-                    logger.debug(f"{command_code} attempt {attempt + 1} validity error; retrying")
-                else:
-                    if attempt > 0:
-                        logger.debug(f"{command_code} succeeded on attempt {attempt + 1}")
-                    return result.stdout
-            else:
-                last_err = result.stderr
-                logger.warning(f"{command_code} attempt {attempt + 1} exit={result.returncode}: {last_err}")
-        except subprocess.TimeoutExpired:
-            last_err = 'timeout'
-            logger.warning(f"{command_code} attempt {attempt + 1} timed out")
-        except Exception as e:
-            last_err = str(e)
-            logger.warning(f"{command_code} attempt {attempt + 1} error: {e}")
-        if attempt < retries - 1:
-            time.sleep(0.3 * (attempt + 1))
-    raise RuntimeError(f"{command_code} failed after {retries} attempts: {last_err}")
+def _query(command_code, retries=3):
+    """Query the inverter over HID and return the raw payload string."""
+    reader = get_default_reader(MPP_PORT)
+    payload = reader.query(command_code, retries=retries)
+    return payload.decode('ascii', errors='replace')
 
 
 def get_mppsolar_output():
-    return _run_mpp('QPIGS')
+    """Backward-compat shim. Returns QPIGS raw payload string."""
+    return _query('QPIGS')
 
 
 def get_device_mode():
     """QMOD -> single-letter mode (P/S/L/B/F/H/C/D) or None if unavailable."""
     try:
-        out = _run_mpp('QMOD', timeout=8, retries=2)
-        for line in out.splitlines():
-            tokens = re.split(r'\s+', line.strip())
-            for tok in tokens:
-                if len(tok) == 1 and tok in MODE_LABELS:
-                    return tok
+        payload = _query('QMOD', retries=2)
+        letter = parse_qmod(payload.encode('ascii'))
+        if letter in MODE_LABELS:
+            return letter
     except Exception as e:
         logger.debug(f"QMOD unavailable: {e}")
     return None
@@ -237,8 +127,9 @@ def _normalize_charger_priority(raw):
     return raw.strip()
 
 
-def _parse_qpiri_raw_lines(output):
-    """Return QPIRI as an ordered list of (label, value, unit) for read-only display."""
+def _parse_qpiri_raw_lines(parsed):
+    """Return QPIRI as an ordered list of (label, value, unit) for read-only display.
+    `parsed` is the already-parsed dict from parse_qpiri."""
     pretty = {
         'ac_input_voltage': 'AC Input Voltage',
         'ac_input_current': 'AC Input Current',
@@ -264,7 +155,6 @@ def _parse_qpiri_raw_lines(output):
         'output_mode': 'Output Mode',
         'battery_redischarge_voltage': 'Battery Redischarge Voltage',
     }
-    parsed = parse_mppsolar_output(output)
     rows = []
     for key in pretty:
         if key in parsed:
@@ -281,8 +171,8 @@ def _parse_qpiri_raw_lines(output):
 def get_inverter_config():
     """QPIRI → normalized config dict plus raw rows for display. Returns {} on failure."""
     try:
-        out = _run_mpp('QPIRI', timeout=10, retries=3)
-        parsed = parse_mppsolar_output(out)
+        payload = _query('QPIRI', retries=3)
+        parsed = parse_qpiri(payload.encode('ascii'))
         op_raw = parsed.get('output_source_priority', {}).get('value')
         cp_raw = parsed.get('charger_source_priority', {}).get('value')
         return {
@@ -298,7 +188,7 @@ def get_inverter_config():
             'battery_float_charge_voltage': parsed.get('battery_float_charge_voltage', {}).get('value'),
             'ac_output_voltage': parsed.get('ac_output_voltage', {}).get('value'),
             'ac_output_frequency': parsed.get('ac_output_frequency', {}).get('value'),
-            'rows': _parse_qpiri_raw_lines(out),
+            'rows': _parse_qpiri_raw_lines(parsed),
         }
     except Exception as e:
         logger.debug(f"QPIRI unavailable: {e}")
@@ -307,11 +197,11 @@ def get_inverter_config():
 
 def _run_write_command(command_code, label):
     logger.info(f"Sending write command {command_code} ({label})")
-    out = _run_mpp(command_code, timeout=10, retries=3)
-    lower = (out or '').lower()
+    payload = _query(command_code, retries=3)
+    lower = (payload or '').lower()
     if 'nak' in lower or 'error' in lower:
-        raise RuntimeError(f"Inverter rejected {command_code}: {out.strip()[:160]}")
-    return out
+        raise RuntimeError(f"Inverter rejected {command_code}: {payload.strip()[:160]}")
+    return payload
 
 
 def set_output_priority(mode):
@@ -337,25 +227,12 @@ def set_charger_priority(mode):
 def get_warning_status():
     """QPIWS -> list of active warnings [{key,label,severity}]. Empty if not parseable."""
     try:
-        out = _run_mpp('QPIWS', timeout=8, retries=2)
-        bits = None
-        m = re.search(r'\b([01]{32})\b', out)
-        if m:
-            bits = m.group(1)
-        if not bits:
-            active_names = set()
-            for line in out.splitlines():
-                parts = re.split(r'\s+', line.strip())
-                if len(parts) >= 2:
-                    name = parts[0].lower().rstrip(':')
-                    val = parts[1]
-                    if val in ('1', 'True', 'true'):
-                        active_names.add(name)
-            return [
-                {'key': key, 'label': label, 'severity': sev}
-                for _, key, label, sev in WARNING_MAP
-                if key in active_names
-            ]
+        payload = _query('QPIWS', retries=2)
+        bits = parse_qpiws(payload.encode('ascii'))
+        m = re.search(r'([01]{32})', bits)
+        if not m:
+            return []
+        bits = m.group(1)
         active = []
         for idx, key, label, sev in WARNING_MAP:
             if idx < len(bits) and bits[idx] == '1':
@@ -532,15 +409,10 @@ def get_inverter_status(mode=None, warnings=None):
     start_time = time.time()
 
     try:
-        raw_output = get_mppsolar_output()
+        raw_payload = _query('QPIGS')
         end_time = time.time()
 
-        parsed_data = parse_mppsolar_output(raw_output)
-
-        if 'error' in parsed_data or 'validity_check' in parsed_data:
-            error_msg = parsed_data.get('error', {}).get('value', 'Unknown')
-            error_detail = parsed_data.get('validity_check', {}).get('value', '')
-            raise RuntimeError(f"Inverter returned error: {error_msg} {error_detail}".strip())
+        parsed_data = parse_qpigs(raw_payload.encode('ascii'))
 
         expected_keys = ['ac_input_voltage', 'pv_input_voltage', 'battery_voltage']
         if not any(k in parsed_data for k in expected_keys):
