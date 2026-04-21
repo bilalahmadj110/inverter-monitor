@@ -700,11 +700,13 @@
                             maxRotation: 0,
                             autoSkip: true,
                             maxTicksLimit: 8,
-                            callback: (v) => {
+                            // Regular function: Chart.js binds `this` to the scale, so we read the
+                            // visible span without touching `chart` (which is still in its TDZ
+                            // during the very first render pass).
+                            callback: function (v) {
                                 const d = new Date(v);
-                                // Use the currently-visible span, not the loaded range, so zooming in shows finer ticks.
-                                const span = chart.scales.x
-                                    ? (chart.scales.x.max - chart.scales.x.min)
+                                const span = (this && typeof this.max === 'number' && typeof this.min === 'number')
+                                    ? (this.max - this.min)
                                     : rangeMinutes * 60 * 1000;
                                 if (span > 12 * 60 * 60 * 1000) {
                                     return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
