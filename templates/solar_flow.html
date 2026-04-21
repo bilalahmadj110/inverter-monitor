@@ -594,28 +594,26 @@
         }
 
         const metrics = [
-            { key: 'solar',   label: 'Solar',   border: '#FCD34D', band: 'rgba(252, 211, 77, 0.15)', fill:  'rgba(252, 211, 77, 0.15)' },
-            { key: 'grid',    label: 'Grid',    border: '#60A5FA', band: 'rgba(96, 165, 250, 0.15)', fill:  'rgba(96, 165, 250, 0.15)' },
-            { key: 'load',    label: 'Load',    border: '#A78BFA', band: 'rgba(167, 139, 250, 0.15)', fill: 'rgba(167, 139, 250, 0.12)' },
-            { key: 'battery', label: 'Battery', border: '#34D399', band: 'rgba(52, 211, 153, 0.15)', fill:  'rgba(52, 211, 153, 0.12)', dashed: true },
+            { key: 'solar',   label: 'Solar',   border: '#FCD34D' },
+            { key: 'grid',    label: 'Grid',    border: '#60A5FA' },
+            { key: 'load',    label: 'Load',    border: '#A78BFA' },
+            { key: 'battery', label: 'Battery', border: '#34D399', dashed: true },
         ];
 
-        // Build 3 datasets per metric: min (invisible), max (fills to min = band), mean (visible line).
+        // One dataset per metric — the series average. No min/max envelope bands.
         const datasets = [];
         const idx = {};
         metrics.forEach((m) => {
-            idx[m.key] = { min: datasets.length, max: datasets.length + 1, avg: datasets.length + 2 };
+            idx[m.key] = datasets.length;
             datasets.push({
-                label: `${m.label} min`, data: [], borderColor: 'transparent', backgroundColor: m.band,
-                pointRadius: 0, borderWidth: 0, fill: false, tension: 0, spanGaps: true,
-            });
-            datasets.push({
-                label: `${m.label} max`, data: [], borderColor: 'transparent', backgroundColor: m.band,
-                pointRadius: 0, borderWidth: 0, fill: '-1', tension: 0, spanGaps: true,
-            });
-            datasets.push({
-                label: m.label, data: [], borderColor: m.border, backgroundColor: m.fill,
-                pointRadius: 0, borderWidth: 2, fill: false, tension: 0, spanGaps: true,
+                label: m.label, data: [],
+                borderColor: m.border,
+                backgroundColor: 'transparent',
+                pointRadius: 0,
+                borderWidth: 2,
+                fill: false,
+                tension: 0,
+                spanGaps: true,
                 ...(m.dashed ? { borderDash: [6, 4] } : {}),
             });
         });
@@ -640,10 +638,7 @@
                 plugins: {
                     decimation: { enabled: true, algorithm: 'lttb', samples: 300 },
                     legend: {
-                        labels: {
-                            color: '#E5E7EB',
-                            filter: (item) => !(item.text || '').endsWith(' min') && !(item.text || '').endsWith(' max'),
-                        },
+                        labels: { color: '#E5E7EB' },
                     },
                     tooltip: {
                         backgroundColor: 'rgba(15, 23, 42, 0.92)',
@@ -651,7 +646,6 @@
                         bodyColor: '#fff',
                         borderColor: 'rgba(255,255,255,0.15)',
                         borderWidth: 1,
-                        filter: (c) => !(c.dataset.label || '').endsWith(' min') && !(c.dataset.label || '').endsWith(' max'),
                         callbacks: {
                             title: (items) => {
                                 if (!items.length) return '';
@@ -775,10 +769,8 @@
                 const points = (data && data.points) || [];
                 if (data && data.bucket_seconds) bucketSeconds = Number(data.bucket_seconds);
                 metrics.forEach((m) => {
-                    const mi = idx[m.key];
-                    chart.data.datasets[mi.min].data = points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_min`] }));
-                    chart.data.datasets[mi.max].data = points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_max`] }));
-                    chart.data.datasets[mi.avg].data = points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_avg`] }));
+                    chart.data.datasets[idx[m.key]].data =
+                        points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_avg`] }));
                 });
                 applyGapThreshold();
                 if (chart.resetZoom) chart.resetZoom('none');
@@ -817,7 +809,6 @@
         }
 
         // Live append: every inverter_update from the WebSocket pushes one point per metric.
-        // min/max bands get the same value, so the band tapers cleanly into the live segment.
         window.addEventListener('inverter_update', (ev) => {
             const d = ev.detail;
             if (!d || !d.success || !d.metrics) return;
@@ -831,10 +822,7 @@
             };
             metrics.forEach((metric) => {
                 const v = Number(values[metric.key]) || 0;
-                const mi = idx[metric.key];
-                chart.data.datasets[mi.min].data.push({ x: t, y: v });
-                chart.data.datasets[mi.max].data.push({ x: t, y: v });
-                chart.data.datasets[mi.avg].data.push({ x: t, y: v });
+                chart.data.datasets[idx[metric.key]].data.push({ x: t, y: v });
             });
             trimOld();
             rollAxis();
