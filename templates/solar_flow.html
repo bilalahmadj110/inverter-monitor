@@ -221,6 +221,7 @@
             <div class="flex items-center gap-1">
                 <a href="/" class="px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white">Live</a>
                 <a href="/reports" class="px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Reports</a>
+                <a href="/savings" class="px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Savings</a>
                 <form method="post" action="{{ url_for('auth.logout') }}" class="inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="px-3 py-1.5 rounded-lg text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white transition-colors" title="Sign out">
@@ -490,6 +491,39 @@
                 </div>
             </div>
 
+            <!-- Savings snapshot -->
+            <a href="/savings" class="block mt-6 bg-gradient-to-r from-amber-500/15 to-emerald-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 border border-white/10 rounded-lg p-5 transition-colors group">
+                <div class="flex flex-wrap items-baseline justify-between mb-3">
+                    <h3 class="text-white font-semibold flex items-center gap-2">
+                        <i class="fas fa-coins text-yellow-300"></i>
+                        Cost Savings
+                    </h3>
+                    <span class="text-white/40 text-xs group-hover:text-white/70">Open dashboard <i class="fas fa-arrow-right ml-1"></i></span>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <div class="text-yellow-300 text-xs">Today</div>
+                        <div class="text-white text-xl font-bold">Rs <span id="sv-today">—</span></div>
+                    </div>
+                    <div>
+                        <div class="text-blue-300 text-xs">This Month</div>
+                        <div class="text-white text-xl font-bold">Rs <span id="sv-month">—</span></div>
+                    </div>
+                    <div>
+                        <div class="text-emerald-300 text-xs">Lifetime</div>
+                        <div class="text-white text-xl font-bold">Rs <span id="sv-lifetime">—</span></div>
+                    </div>
+                    <div>
+                        <div class="text-purple-300 text-xs">Payback</div>
+                        <div class="text-white text-xl font-bold" id="sv-payback">—</div>
+                    </div>
+                </div>
+                <div id="sv-cliff" class="hidden mt-3 text-amber-200 text-sm flex items-start gap-2">
+                    <i class="fas fa-triangle-exclamation mt-0.5"></i>
+                    <span id="sv-cliff-text"></span>
+                </div>
+            </a>
+
             <!-- System Information -->
             <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
@@ -703,6 +737,34 @@
 
         // Rolling axis only — no periodic HTTP refresh. HTTP reloads happen on range change.
         setInterval(rollAxis, 1000);
+    })();
+    </script>
+
+    <script>
+    // Savings snapshot widget — fetches /savings/data once on load and every 5 minutes.
+    (function () {
+        const fmtPKR = (n) => Math.round(Number(n) || 0).toLocaleString('en-PK');
+        async function loadSavings() {
+            try {
+                const res = await fetch('/savings/data', { credentials: 'same-origin' });
+                if (!res.ok) return;
+                const d = await res.json();
+                document.getElementById('sv-today').textContent = fmtPKR(d.today?.savings_pkr);
+                document.getElementById('sv-month').textContent = fmtPKR(d.month?.savings_pkr);
+                document.getElementById('sv-lifetime').textContent = fmtPKR(d.lifetime?.total_savings_pkr);
+                const pb = d.payback || {};
+                document.getElementById('sv-payback').textContent =
+                    pb.status === 'ok' ? `${pb.payback_months} mo` : '—';
+                const cliff = d.projection?.cliff_alert;
+                if (cliff) {
+                    document.getElementById('sv-cliff').classList.remove('hidden');
+                    document.getElementById('sv-cliff-text').textContent =
+                        `Heading toward ${cliff.next_slab} slab. Cut ${cliff.expected_overshoot_kwh} kWh of grid use to stay in cheaper ${cliff.current_slab}.`;
+                }
+            } catch (e) { /* silent */ }
+        }
+        loadSavings();
+        setInterval(loadSavings, 5 * 60 * 1000);
     })();
     </script>
 </body>

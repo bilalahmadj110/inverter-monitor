@@ -8,6 +8,9 @@ import os
 import subprocess
 import logging
 import power_stats
+import cost_config as cost_config_module
+import cost_savings
+import ai_assistant
 from continuous_reader import ContinuousReader
 from inverter_status import (
     set_output_priority, set_charger_priority,
@@ -62,6 +65,7 @@ socketio = SocketIO(
 )
 
 stats_manager = power_stats.get_instance()
+cost_cfg = cost_config_module.get_instance(stats_manager.db_path)
 
 
 def _on_reading(status, total_readings):
@@ -145,6 +149,12 @@ def classic_dashboard():
 @login_required
 def reports():
     return render_template('history.html')
+
+
+@app.route('/savings')
+@login_required
+def savings_page():
+    return render_template('savings.html')
 
 
 # ---- Read-only JSON endpoints (login required, generous rate limit) -----------------------
@@ -303,6 +313,78 @@ def export_readings():
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename=inverter_{label}.csv'},
     )
+
+
+# ---- Cost-savings endpoints ---------------------------------------------------------------
+
+@app.route('/savings/data')
+@login_required
+def savings_data():
+    """One-shot payload for the savings page: today + month + lifetime + payback + slab projection."""
+    return jsonify(cost_savings.build_full_payload(stats_manager, cost_cfg))
+
+
+@app.route('/savings/config')
+@login_required
+def savings_get_config():
+    return jsonify(cost_cfg.load())
+
+
+@app.route('/savings/config', methods=['POST'])
+@login_required
+@limiter.limit('30 per minute')
+def savings_save_config():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({'success': False, 'error': 'body must be a JSON object'}), 400
+    try:
+        merged = cost_cfg.save(body)
+        audit('savings_config_update', keys=list(body.keys()))
+        return jsonify({'success': True, 'config': merged})
+    except Exception as e:
+        logger.error(f"savings_config save failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/savings/config/reset', methods=['POST'])
+@login_required
+@limiter.limit('5 per minute')
+def savings_reset_config():
+    audit('savings_config_reset')
+    return jsonify({'success': True, 'config': cost_cfg.reset()})
+
+
+@app.route('/savings/preview', methods=['POST'])
+@login_required
+@limiter.limit('60 per minute')
+def savings_preview_bill():
+    """Compute a LESCO bill for arbitrary kWh — used by the 'what-if' calculator
+    in the UI. Body: {units: number, config?: {...overrides}}."""
+    import lesco_tariff
+    body = request.get_json(silent=True) or {}
+    units = body.get('units')
+    overrides = body.get('config') or {}
+    base = cost_cfg.load()
+    base.update(overrides)
+    return jsonify(lesco_tariff.compute_bill(units, base))
+
+
+@app.route('/ai/status')
+@login_required
+def ai_status():
+    return jsonify(ai_assistant.is_available())
+
+
+@app.route('/ai/ask', methods=['POST'])
+@login_required
+@limiter.limit('10 per minute; 60 per hour')
+def ai_ask():
+    body = request.get_json(silent=True) or {}
+    question = (body.get('question') or '').strip()
+    audit('ai_ask', question_len=len(question))
+    result = ai_assistant.ask(question, stats_manager, cost_cfg)
+    code = 200 if result.get('ok') else (503 if 'not available' in (result.get('error') or '') else 400)
+    return jsonify(result), code
 
 
 @app.route('/config')
