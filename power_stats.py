@@ -679,11 +679,11 @@ class PowerStats:
             logger.error(f"Error recomputing daily stats: {e}")
             return {'updated': [], 'count': 0, 'error': str(e)}
 
-    def get_recent_readings(self, minutes=30, bucket_seconds=None, target_points=200):
+    def get_recent_readings(self, minutes=30, bucket_seconds=None, target_points=120):
         """Return power series for the last N minutes with adaptive server-side bucketing.
         Returns avg/min/max per bucket so the frontend can draw a mean line with a min/max envelope."""
         try:
-            minutes = max(1, min(int(minutes), 720))
+            minutes = max(1, min(int(minutes), 1440))
             total_seconds = minutes * 60
             if bucket_seconds is None:
                 bucket_seconds = max(3, total_seconds // max(1, target_points))

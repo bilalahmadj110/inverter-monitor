@@ -218,7 +218,7 @@ def get_recent_readings():
         minutes = int(request.args.get('minutes', 30))
     except (TypeError, ValueError):
         minutes = 30
-    minutes = max(1, min(minutes, 720))
+    minutes = max(1, min(minutes, 1440))
     bucket_arg = request.args.get('bucket')
     try:
         bucket_seconds = int(bucket_arg) if bucket_arg else None
