@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import sqlite3
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from typing import Any
 
 import lesco_tariff
