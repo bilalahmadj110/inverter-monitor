@@ -722,13 +722,13 @@
             },
         });
 
-        // Break the line only when two consecutive points are farther apart than ~3× the bucket size.
-        // This keeps lines continuous through normal sampling jitter while still showing real data gaps.
+        // Break the line only on real reader outages. Anything over READER_GAP_MS between two
+        // consecutive points is treated as a data gap (this is the same threshold the Outages
+        // report uses, so what you see on the chart matches what's in that table).
+        const READER_GAP_MS = 60 * 1000;
         function applyGapThreshold() {
-            const threshold = Math.max(bucketSeconds * 3, 30) * 1000;
             chart.data.datasets.forEach((ds) => {
-                // Chart.js honors dataset-level spanGaps as a ms number
-                ds.spanGaps = threshold;
+                ds.spanGaps = READER_GAP_MS;
             });
         }
 

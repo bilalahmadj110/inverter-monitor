@@ -247,6 +247,18 @@ def get_outages():
     return jsonify(stats_manager.get_outages(from_date, to_date))
 
 
+@app.route('/data-gaps')
+@login_required
+def get_data_gaps():
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+    try:
+        threshold = int(request.args.get('threshold', 60))
+    except (TypeError, ValueError):
+        threshold = 60
+    return jsonify(stats_manager.get_data_gaps(from_date, to_date, threshold))
+
+
 @app.route('/raw-data')
 @login_required
 def get_raw_data():
