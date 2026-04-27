@@ -29,6 +29,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "sanctioned_load_kw": 3.3,        # Galaxy Primax 3.3 kW
     "fpa_per_unit": 4.5,              # Fuel Price Adjustment, monthly notification
     "qtr_adjustment_per_unit": 0.0,   # Quarterly Tariff Adjustment (optional)
+    "fix_charges_per_kw": 300,        # Fixed monthly charge per kW of sanctioned load (FESCO ~300).
 
     # All taxes/surcharges. Edit any from the UI.
     "gst_percent": 17.0,
@@ -80,6 +81,14 @@ def merge_config(overrides: dict[str, Any] | None) -> dict[str, Any]:
         if k in cfg:
             cfg[k] = v
     return cfg
+
+
+def fix_charges_total(cfg: dict[str, Any]) -> float:
+    """Monthly fixed charges = per-kW rate × sanctioned load (kW). Returned
+    flat — no slab math. Included as a line item in compute_bill()."""
+    rate = float(cfg.get("fix_charges_per_kw", 0) or 0)
+    load = float(cfg.get("sanctioned_load_kw", 0) or 0)
+    return round(rate * load, 2)
 
 
 def _telescopic_energy_charge(units: float, slabs: list[dict]) -> tuple[float, list[dict]]:
@@ -157,9 +166,10 @@ def compute_bill(units: float, config: dict[str, Any] | None = None) -> dict[str
     qta = units * float(cfg.get("qtr_adjustment_per_unit", 0) or 0)
     fc_surcharge = units * float(cfg.get("fc_surcharge_per_unit", 0) or 0)
     nj_surcharge = units * float(cfg.get("nj_surcharge_per_unit", 0) or 0)
+    fix_charges = fix_charges_total(cfg)
 
-    # GST and electricity duty are calculated on (energy + FPA + QTA + surcharges).
-    pre_tax = energy_charge + fpa + qta + fc_surcharge + nj_surcharge
+    # GST and electricity duty are calculated on (energy + fix + FPA + QTA + surcharges).
+    pre_tax = energy_charge + fix_charges + fpa + qta + fc_surcharge + nj_surcharge
     gst = pre_tax * float(cfg.get("gst_percent", 0) or 0) / 100.0
     ed = pre_tax * float(cfg.get("electricity_duty_percent", 0) or 0) / 100.0
     extra_tax = pre_tax * float(cfg.get("extra_tax_percent", 0) or 0) / 100.0
@@ -205,6 +215,7 @@ def compute_bill(units: float, config: dict[str, Any] | None = None) -> dict[str
         "slab_info": slab_info,
         "energy_charge": round(energy_charge, 2),
         "energy_lines": slab_lines,
+        "fix_charges": round(fix_charges, 2),
         "fpa": round(fpa, 2),
         "qta": round(qta, 2),
         "fc_surcharge": round(fc_surcharge, 2),
