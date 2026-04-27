@@ -312,6 +312,8 @@ def build_full_payload(stats_manager, cost_config) -> dict[str, Any]:
     start, end = fesco_bill.compute_cycle_boundaries(today, cfg, stats_manager.db_path)
     cycle_block = compute_savings_for_cycle(stats_manager.db_path, start, end, cfg)
     cycle_block["label"] = fesco_bill.cycle_label_for(end)
+    # Back-compat: front-end JS reads `m.month` for the cycle label.
+    cycle_block["month"] = cycle_block["label"]
 
     lifetime = compute_lifetime_from_cycles(stats_manager.db_path, cfg)
     payback = compute_payback(cfg.get("install_cost_pkr") or 0, lifetime["avg_daily_savings_pkr"])
@@ -321,6 +323,10 @@ def build_full_payload(stats_manager, cost_config) -> dict[str, Any]:
         "config": cfg,
         "today": today_block,
         "cycle": cycle_block,
+        # Back-compat alias for front-end JS that still reads payload.month.
+        # Both keys point to the same dict — safe because this payload is
+        # serialized once and never mutated.
+        "month": cycle_block,
         "lifetime": lifetime,
         "payback": payback,
         "projection": projection,
