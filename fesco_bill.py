@@ -237,3 +237,49 @@ def forecast_open_cycle(
         "same_month_last_year_label": last_year_label,
         "same_month_last_year_units": last_year_units,
     }
+
+
+def _cycle_units(cycle: dict[str, Any]) -> float | None:
+    """Pick units_actual if present, else units_estimated. None if both missing."""
+    if cycle.get("units_actual") is not None:
+        return float(cycle["units_actual"])
+    if cycle.get("units_estimated") is not None:
+        return float(cycle["units_estimated"])
+    return None
+
+
+def detect_protected_status(closed_cycles: list[dict[str, Any]]) -> dict[str, Any]:
+    """Apply NEPRA rule: protected if last 6 closed cycles all <= 200 units.
+
+    closed_cycles must be ordered oldest-first. Only entries with status='closed'
+    are considered; the function picks the last 6.
+    """
+    closed = [c for c in closed_cycles if c.get("status", "closed") == "closed"]
+    if len(closed) < PROTECTED_WINDOW_CYCLES:
+        return {
+            "status": "unknown",
+            "reason": f"need {PROTECTED_WINDOW_CYCLES} closed cycles, have {len(closed)}",
+            "window": [c["cycle_label"] for c in closed],
+            "max_units_in_window": None,
+            "violator_cycle": None,
+        }
+
+    window = closed[-PROTECTED_WINDOW_CYCLES:]
+    units_pairs = [(c["cycle_label"], _cycle_units(c) or 0.0) for c in window]
+    max_label, max_units = max(units_pairs, key=lambda p: p[1])
+
+    if max_units <= PROTECTED_THRESHOLD_UNITS:
+        return {
+            "status": "protected",
+            "reason": "all 6 cycles within threshold",
+            "window": [c["cycle_label"] for c in window],
+            "max_units_in_window": max_units,
+            "violator_cycle": None,
+        }
+    return {
+        "status": "unprotected",
+        "reason": f"{max_label} = {int(max_units)} > {PROTECTED_THRESHOLD_UNITS}",
+        "window": [c["cycle_label"] for c in window],
+        "max_units_in_window": max_units,
+        "violator_cycle": max_label,
+    }

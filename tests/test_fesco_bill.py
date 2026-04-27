@@ -209,3 +209,75 @@ def test_forecast_open_cycle_includes_same_month_last_year(tmp_db, seed_daily):
     result = fesco_bill.forecast_open_cycle(today, cfg, tmp_db)
     assert result["same_month_last_year_units"] == 115
     assert result["same_month_last_year_label"] == "Mar25"
+
+
+# -------------------------- detect_protected_status --------------------------
+
+def _make_cycle(label: str, units_actual: int | None = None,
+                units_estimated: float | None = None, status: str = "closed"):
+    """Test helper: build a dict shaped like a billing_cycles row."""
+    return {
+        "cycle_label": label,
+        "status": status,
+        "units_actual": units_actual,
+        "units_estimated": units_estimated,
+        "end_date": "2026-01-01",  # ordering set by caller via list order
+    }
+
+
+def test_detect_protected_status_real_user_data():
+    """User's actual 12-month series — Sep25=306, Oct25=229 → unprotected."""
+    cycles = [
+        _make_cycle("Sep25", 306),
+        _make_cycle("Oct25", 229),
+        _make_cycle("Nov25", 153),
+        _make_cycle("Dec25", 137),
+        _make_cycle("Jan26", 124),
+        _make_cycle("Feb26", 133),
+    ]
+    result = fesco_bill.detect_protected_status(cycles)
+    assert result["status"] == "unprotected"
+    assert result["max_units_in_window"] == 306
+    assert result["violator_cycle"] == "Sep25"
+
+
+def test_detect_protected_status_all_under_200():
+    cycles = [
+        _make_cycle(f"M{i:02d}", 150) for i in range(6)
+    ]
+    result = fesco_bill.detect_protected_status(cycles)
+    assert result["status"] == "protected"
+    assert result["max_units_in_window"] == 150
+    assert result["violator_cycle"] is None
+
+
+def test_detect_protected_status_fewer_than_6_returns_unknown():
+    cycles = [_make_cycle(f"M{i:02d}", 150) for i in range(5)]
+    result = fesco_bill.detect_protected_status(cycles)
+    assert result["status"] == "unknown"
+    assert "need 6 closed cycles" in result["reason"].lower()
+
+
+def test_detect_uses_units_actual_else_estimated():
+    cycles = [
+        _make_cycle("M01", units_actual=None, units_estimated=120.5),
+        _make_cycle("M02", units_actual=180),
+        _make_cycle("M03", units_actual=190),
+        _make_cycle("M04", units_actual=150),
+        _make_cycle("M05", units_actual=100),
+        _make_cycle("M06", units_actual=199),
+    ]
+    result = fesco_bill.detect_protected_status(cycles)
+    assert result["status"] == "protected"
+
+
+def test_detect_picks_only_last_6_closed():
+    # 8 cycles, oldest two have 250 (would violate), but only last 6 are checked.
+    cycles = [
+        _make_cycle("OLDA", 250), _make_cycle("OLDB", 250),
+        _make_cycle("M01", 100), _make_cycle("M02", 100),
+        _make_cycle("M03", 100), _make_cycle("M04", 100),
+        _make_cycle("M05", 100), _make_cycle("M06", 100),
+    ]
+    result = fesco_bill.detect_protected_status(cycles)
+    assert result["status"] == "protected"
