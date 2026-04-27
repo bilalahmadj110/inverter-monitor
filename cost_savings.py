@@ -303,7 +303,6 @@ def build_full_payload(stats_manager, cost_config) -> dict[str, Any]:
     + slab projection + payback. The frontend gets everything in a single GET.
     """
     import fesco_bill
-    import fesco_cycles
 
     cfg = cost_config.load()
     today_block = compute_today(stats_manager, cfg)

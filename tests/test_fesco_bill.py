@@ -152,7 +152,7 @@ def test_forecast_open_cycle_run_rate(tmp_db, seed_daily):
     cycle_start = date(2026, 2, 27)
     today = date(2026, 3, 13)
     elapsed = (today - cycle_start).days + 1  # 15
-    total = (date(2026, 3, 26) - cycle_start).days + 1  # 28
+    # Cycle ends 26 Mar (total = 28 days), so projection = units_so_far × 28/15.
 
     # Seed exactly 30 kWh of grid in the first 15 days (so projection ≈ 56).
     for i in range(elapsed):
