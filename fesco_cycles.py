@@ -197,11 +197,17 @@ class CycleStore:
                 else:
                     units_est = existing_open.get("units_estimated") or 0
                     bill_est = existing_open.get("bill_amount_estimated") or 0
+                # Auto-close drives both the estimate and the actual values.
+                # Going-forward cycles aren't manually entered — the inverter's
+                # own grid_kwh tracking is the source of truth. Manual entry
+                # remains available only for correcting bootstrapped history.
                 self._unlocked_upsert({
                     **existing_open,
                     "status": "closed",
                     "units_estimated": round(units_est, 3),
                     "bill_amount_estimated": round(bill_est, 2),
+                    "units_actual": int(round(units_est)),
+                    "bill_amount_actual": round(bill_est, 2),
                 })
 
             # Create the new open cycle.

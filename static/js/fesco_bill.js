@@ -204,32 +204,14 @@
       const billCol = row.bill_amount != null && row.bill_amount < 0
         ? `<span class="text-rose-400">${fmtPkr(row.bill_amount)} (refund)</span>`
         : fmtPkr(row.bill_amount);
-      const editPencil = row.is_actual
-        ? `<button class="text-white/30 hover:text-white" data-edit-label="${row.label}"><i class="fas fa-pen"></i></button>`
-        : `<button class="text-amber-300 hover:text-amber-100" data-edit-label="${row.label}" title="Awaiting actual"><i class="fas fa-pen-to-square"></i></button>`;
       return `<tr class="border-t border-white/5">
         <td class="py-1.5 text-white">${row.label}</td>
         <td class="py-1.5 text-right text-white">${fmtKwh(row.units)}</td>
         <td class="py-1.5 text-right text-white">${billCol}</td>
         <td class="py-1.5 text-right text-white/70">${fmtPkr(row.paid)}</td>
-        <td class="py-1.5 text-right">${editPencil}</td>
       </tr>`;
     }).join('');
     tbody.innerHTML = rows;
-    tbody.querySelectorAll('[data-edit-label]').forEach((btn) => {
-      btn.addEventListener('click', () => openEditModal(btn.dataset.editLabel));
-    });
-  }
-
-  function renderRecordActualBtn(payload) {
-    const btn = $('record-actual-btn');
-    if (payload.cycle.status === 'open') {
-      btn.classList.remove('hidden');
-      $('record-actual-label').textContent = payload.cycle.cycle_label;
-      btn.onclick = () => openEditModal(payload.cycle.cycle_label);
-    } else {
-      btn.classList.add('hidden');
-    }
   }
 
   function populateCyclePicker(allCycles, currentLabel) {
@@ -249,47 +231,6 @@
       url.searchParams.set('cycle', next);
       window.location.href = url.toString();
     };
-  }
-
-  // -------------------------- Edit modal --------------------------
-
-  function openEditModal(label) {
-    $('edit-modal').classList.remove('hidden');
-    $('edit-label').value = label;
-    fetchJSON(`/fesco/bill?cycle=${encodeURIComponent(label)}`).then((p) => {
-      $('edit-reading-date').value = p.cycle.end_date || p.header.reading_date;
-      $('edit-units').value = p.cycle.units_actual ?? '';
-      $('edit-bill').value = p.cycle.bill_amount_actual ?? '';
-      $('edit-paid').value = p.cycle.payment_amount ?? '';
-      $('edit-fpa').value = p.cycle.fpa_per_unit_actual ?? '';
-      $('edit-notes').value = p.cycle.notes ?? '';
-    });
-  }
-
-  function closeEditModal() {
-    $('edit-modal').classList.add('hidden');
-  }
-
-  async function submitEdit(ev) {
-    ev.preventDefault();
-    const label = $('edit-label').value;
-    const reading = $('edit-reading-date').value;
-    // We need start_date too; pull it from the existing cycle to preserve.
-    const existing = await fetchJSON(`/fesco/bill?cycle=${encodeURIComponent(label)}`);
-    const body = {
-      cycle_label: label,
-      start_date: existing.cycle.start_date,
-      end_date: reading,
-      status: 'closed',
-      units_actual: parseInt($('edit-units').value, 10),
-      bill_amount_actual: parseFloat($('edit-bill').value),
-      payment_amount: $('edit-paid').value ? parseFloat($('edit-paid').value) : null,
-      fpa_per_unit_actual: $('edit-fpa').value ? parseFloat($('edit-fpa').value) : null,
-      notes: $('edit-notes').value || null,
-    };
-    await fetchJSON('/fesco/cycle', { method: 'POST', body: JSON.stringify(body) });
-    closeEditModal();
-    location.reload();
   }
 
   // -------------------------- Init --------------------------
@@ -329,10 +270,6 @@
     renderSlab(billResp);
     renderPayable(billResp);
     renderHistory(billResp);
-    renderRecordActualBtn(billResp);
-
-    $('edit-close').addEventListener('click', closeEditModal);
-    $('edit-form').addEventListener('submit', submitEdit);
   }
 
   document.addEventListener('DOMContentLoaded', init);

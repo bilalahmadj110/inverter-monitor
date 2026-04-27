@@ -122,57 +122,12 @@
                             <th class="text-right py-2">Units</th>
                             <th class="text-right py-2">Bill</th>
                             <th class="text-right py-2">Paid</th>
-                            <th class="text-right py-2 w-8"></th>
                         </tr>
                     </thead>
                     <tbody id="history-body"></tbody>
                 </table>
             </div>
 
-            <!-- Record actual bill CTA (only on open cycle) -->
-            <button id="record-actual-btn" class="hidden w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">
-                <i class="fas fa-pen-to-square mr-2"></i> Enter actual bill for <span id="record-actual-label"></span>
-            </button>
-        </div>
-
-        <!-- Edit modal -->
-        <div id="edit-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-            <div class="bg-gray-900 border border-white/10 rounded-xl w-full max-w-md p-6">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-white text-lg font-bold">Enter actual bill</h3>
-                    <button id="edit-close" class="text-white/50 hover:text-white"><i class="fas fa-xmark"></i></button>
-                </div>
-                <form id="edit-form" class="space-y-3">
-                    <input type="hidden" id="edit-label">
-                    <div>
-                        <label class="block text-white/70 text-xs mb-1">Reading date</label>
-                        <input id="edit-reading-date" type="date" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm" required>
-                    </div>
-                    <div>
-                        <label class="block text-white/70 text-xs mb-1">Units consumed</label>
-                        <input id="edit-units" type="number" min="0" step="1" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm" required>
-                    </div>
-                    <div>
-                        <label class="block text-white/70 text-xs mb-1">Bill amount (PKR)</label>
-                        <input id="edit-bill" type="number" step="0.01" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm" required>
-                    </div>
-                    <div>
-                        <label class="block text-white/70 text-xs mb-1">Paid amount (PKR, optional)</label>
-                        <input id="edit-paid" type="number" step="0.01" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-white/70 text-xs mb-1">FPA per unit (PKR, optional)</label>
-                        <input id="edit-fpa" type="number" step="0.0001" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-white/70 text-xs mb-1">Notes</label>
-                        <textarea id="edit-notes" rows="2" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm"></textarea>
-                    </div>
-                    <button type="submit" class="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold">
-                        Save
-                    </button>
-                </form>
-            </div>
         </div>
 
     </div>
