@@ -564,15 +564,28 @@
             <!-- Live Power Chart -->
             <div class="mt-8 bg-white/10 backdrop-blur-sm rounded-lg p-6">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
-                    <h2 class="text-white text-lg font-semibold">Live Power (W)</h2>
-                    <div class="inline-flex rounded-lg overflow-hidden border border-white/20" role="group" id="live-range">
-                        <button data-min="5"   class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors">5m</button>
-                        <button data-min="30"  class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">30m</button>
-                        <button data-min="120" class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">2h</button>
-                        <button data-min="360" class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">6h</button>
+                    <div>
+                        <h2 class="text-white text-lg font-semibold">Live Power (W)</h2>
+                        <div class="text-white/50 text-[11px] mt-1">
+                            Drag to zoom a region · wheel/pinch to zoom · shift+drag to pan
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <div class="inline-flex rounded-lg overflow-hidden border border-white/20" role="group" id="live-range">
+                            <button data-min="5"    class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors">5m</button>
+                            <button data-min="30"   class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">30m</button>
+                            <button data-min="120"  class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">2h</button>
+                            <button data-min="360"  class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">6h</button>
+                            <button data-min="720"  class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">12h</button>
+                            <button data-min="1440" class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">24h</button>
+                        </div>
+                        <button id="live-reset-zoom"
+                                class="hidden px-3 py-1 text-sm text-white bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg transition-colors">
+                            <i class="fa-solid fa-rotate-left mr-1"></i>Reset Zoom
+                        </button>
                     </div>
                 </div>
-                <div class="relative" style="height: 340px;">
+                <div class="relative" style="height: 380px;">
                     <canvas id="live-chart"></canvas>
                 </div>
             </div>
@@ -580,41 +593,48 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="{{ url_for('static', filename='js/solar_flow.js') }}"></script>
     <script>
     (function () {
         const ctx = document.getElementById('live-chart');
         if (!ctx) return;
 
+        // Register the zoom plugin with Chart.js if it loaded. Safe fallback if the CDN is unreachable.
+        if (window.Chart && window.ChartZoom) {
+            Chart.register(window.ChartZoom);
+        }
+
         const metrics = [
-            { key: 'solar',   label: 'Solar',   border: '#FCD34D', band: 'rgba(252, 211, 77, 0.15)', fill:  'rgba(252, 211, 77, 0.15)' },
-            { key: 'grid',    label: 'Grid',    border: '#60A5FA', band: 'rgba(96, 165, 250, 0.15)', fill:  'rgba(96, 165, 250, 0.15)' },
-            { key: 'load',    label: 'Load',    border: '#A78BFA', band: 'rgba(167, 139, 250, 0.15)', fill: 'rgba(167, 139, 250, 0.12)' },
-            { key: 'battery', label: 'Battery', border: '#34D399', band: 'rgba(52, 211, 153, 0.15)', fill:  'rgba(52, 211, 153, 0.12)', dashed: true },
+            { key: 'solar',   label: 'Solar',   border: '#FCD34D' },
+            { key: 'grid',    label: 'Grid',    border: '#60A5FA' },
+            { key: 'load',    label: 'Load',    border: '#A78BFA' },
+            { key: 'battery', label: 'Battery', border: '#34D399', dashed: true },
         ];
 
-        // Build 3 datasets per metric: min (invisible), max (fills to min = band), mean (visible line).
+        // One dataset per metric — the series average. No min/max envelope bands.
         const datasets = [];
         const idx = {};
         metrics.forEach((m) => {
-            idx[m.key] = { min: datasets.length, max: datasets.length + 1, avg: datasets.length + 2 };
+            idx[m.key] = datasets.length;
             datasets.push({
-                label: `${m.label} min`, data: [], borderColor: 'transparent', backgroundColor: m.band,
-                pointRadius: 0, borderWidth: 0, fill: false, tension: 0,
-            });
-            datasets.push({
-                label: `${m.label} max`, data: [], borderColor: 'transparent', backgroundColor: m.band,
-                pointRadius: 0, borderWidth: 0, fill: '-1', tension: 0,
-            });
-            datasets.push({
-                label: m.label, data: [], borderColor: m.border, backgroundColor: m.fill,
-                pointRadius: 0, borderWidth: 2, fill: false, tension: 0,
+                label: m.label, data: [],
+                borderColor: m.border,
+                backgroundColor: 'transparent',
+                pointRadius: 0,
+                borderWidth: 2,
+                fill: false,
+                tension: 0,
+                spanGaps: true,
                 ...(m.dashed ? { borderDash: [6, 4] } : {}),
             });
         });
 
         let rangeMinutes = 30;
+        let bucketSeconds = 15;   // updated from server response; used to decide when gaps should break the line
+        let isZoomed = false;     // when true, stop rolling the axis and stop trimming old points
 
         const chart = new Chart(ctx, {
             type: 'line',
@@ -624,14 +644,15 @@
                 maintainAspectRatio: false,
                 animation: false,
                 parsing: false,
-                spanGaps: false,
+                // Only break the line when the gap is unusually large compared to the bucket size.
+                // This keeps lines continuous through normal jitter while still showing real outages.
+                spanGaps: true,
+                normalized: true,
                 interaction: { mode: 'nearest', axis: 'x', intersect: false },
                 plugins: {
+                    decimation: { enabled: true, algorithm: 'lttb', samples: 300 },
                     legend: {
-                        labels: {
-                            color: '#E5E7EB',
-                            filter: (item) => !(item.text || '').endsWith(' min') && !(item.text || '').endsWith(' max'),
-                        },
+                        labels: { color: '#E5E7EB' },
                     },
                     tooltip: {
                         backgroundColor: 'rgba(15, 23, 42, 0.92)',
@@ -639,10 +660,41 @@
                         bodyColor: '#fff',
                         borderColor: 'rgba(255,255,255,0.15)',
                         borderWidth: 1,
-                        filter: (c) => !(c.dataset.label || '').endsWith(' min') && !(c.dataset.label || '').endsWith(' max'),
                         callbacks: {
-                            title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleTimeString() : '',
+                            title: (items) => {
+                                if (!items.length) return '';
+                                const d = new Date(items[0].parsed.x);
+                                return rangeMinutes >= 360
+                                    ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                    : d.toLocaleTimeString();
+                            },
                             label: (c) => `${c.dataset.label}: ${Math.round(c.parsed.y)} W`,
+                        },
+                    },
+                    zoom: {
+                        limits: {
+                            // Don't let the user zoom out past the loaded window.
+                            x: { minRange: 10 * 1000 },
+                        },
+                        pan: {
+                            enabled: true,
+                            mode: 'x',
+                            modifierKey: 'shift',
+                            onPanStart: () => { isZoomed = true; showResetZoom(true); },
+                        },
+                        zoom: {
+                            wheel: { enabled: true, speed: 0.08 },
+                            pinch: { enabled: true },
+                            drag: {
+                                enabled: true,
+                                backgroundColor: 'rgba(96, 165, 250, 0.18)',
+                                borderColor: 'rgba(96, 165, 250, 0.9)',
+                                borderWidth: 1,
+                                threshold: 6,
+                            },
+                            mode: 'x',
+                            onZoomStart: () => { isZoomed = true; },
+                            onZoom: () => { showResetZoom(true); },
                         },
                     },
                 },
@@ -656,13 +708,21 @@
                             maxRotation: 0,
                             autoSkip: true,
                             maxTicksLimit: 8,
-                            callback: (v) => {
+                            // Regular function: Chart.js binds `this` to the scale, so we read the
+                            // visible span without touching `chart` (which is still in its TDZ
+                            // during the very first render pass).
+                            callback: function (v) {
                                 const d = new Date(v);
-                                const rangeMs = rangeMinutes * 60 * 1000;
-                                // For long ranges, drop seconds to reduce visual noise
-                                return rangeMs > 30 * 60 * 1000
-                                    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                    : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                const span = (this && typeof this.max === 'number' && typeof this.min === 'number')
+                                    ? (this.max - this.min)
+                                    : rangeMinutes * 60 * 1000;
+                                if (span > 12 * 60 * 60 * 1000) {
+                                    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                                }
+                                if (span > 30 * 60 * 1000) {
+                                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                }
+                                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                             },
                         },
                         grid: { color: 'rgba(255,255,255,0.08)' },
@@ -676,7 +736,18 @@
             },
         });
 
+        // Break the line only on real reader outages. Anything over READER_GAP_MS between two
+        // consecutive points is treated as a data gap (this is the same threshold the Outages
+        // report uses, so what you see on the chart matches what's in that table).
+        const READER_GAP_MS = 60 * 1000;
+        function applyGapThreshold() {
+            chart.data.datasets.forEach((ds) => {
+                ds.spanGaps = READER_GAP_MS;
+            });
+        }
+
         function rollAxis() {
+            if (isZoomed) return;            // don't fight the user's zoom
             const now = Date.now();
             chart.options.scales.x.min = now - rangeMinutes * 60 * 1000;
             chart.options.scales.x.max = now;
@@ -684,6 +755,7 @@
         }
 
         const buttons = document.querySelectorAll('.live-range-btn');
+        const resetBtn = document.getElementById('live-reset-zoom');
         const activeClasses = ['bg-blue-600', 'hover:bg-blue-700'];
 
         function setActive(min) {
@@ -694,19 +766,28 @@
             });
         }
 
+        function showResetZoom(on) {
+            if (!resetBtn) return;
+            resetBtn.classList.toggle('hidden', !on);
+        }
+
         async function loadData(min) {
             rangeMinutes = min;
             setActive(min);
+            // Switching range always exits zoom mode and reloads the full window.
+            isZoomed = false;
+            showResetZoom(false);
             try {
                 const res = await fetch(`/recent-readings?minutes=${min}`);
                 const data = await res.json();
                 const points = (data && data.points) || [];
+                if (data && data.bucket_seconds) bucketSeconds = Number(data.bucket_seconds);
                 metrics.forEach((m) => {
-                    const mi = idx[m.key];
-                    chart.data.datasets[mi.min].data = points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_min`] }));
-                    chart.data.datasets[mi.max].data = points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_max`] }));
-                    chart.data.datasets[mi.avg].data = points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_avg`] }));
+                    chart.data.datasets[idx[m.key]].data =
+                        points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_avg`] }));
                 });
+                applyGapThreshold();
+                if (chart.resetZoom) chart.resetZoom('none');
                 rollAxis();
             } catch (err) {
                 console.error('Failed to load recent readings', err);
@@ -714,19 +795,34 @@
         }
 
         buttons.forEach((b) => b.addEventListener('click', () => loadData(Number(b.dataset.min))));
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                if (chart.resetZoom) chart.resetZoom('none');
+                isZoomed = false;
+                showResetZoom(false);
+                rollAxis();
+            });
+        }
+        // Double-click / double-tap on the chart also resets the zoom.
+        ctx.addEventListener('dblclick', () => {
+            if (chart.resetZoom) chart.resetZoom('none');
+            isZoomed = false;
+            showResetZoom(false);
+            rollAxis();
+        });
         loadData(30);
 
         // Trim any points older than the visible window so the arrays don't grow unbounded.
+        // While zoomed we keep the full loaded window so the user can pan/zoom freely.
         function trimOld() {
+            if (isZoomed) return;
             const cutoff = Date.now() - rangeMinutes * 60 * 1000;
             chart.data.datasets.forEach((ds) => {
-                // Drop leading points older than cutoff. Arrays are time-ordered.
                 while (ds.data.length && ds.data[0].x < cutoff) ds.data.shift();
             });
         }
 
         // Live append: every inverter_update from the WebSocket pushes one point per metric.
-        // min/max bands get the same value, so the band tapers cleanly into the live segment.
         window.addEventListener('inverter_update', (ev) => {
             const d = ev.detail;
             if (!d || !d.success || !d.metrics) return;
@@ -740,16 +836,13 @@
             };
             metrics.forEach((metric) => {
                 const v = Number(values[metric.key]) || 0;
-                const mi = idx[metric.key];
-                chart.data.datasets[mi.min].data.push({ x: t, y: v });
-                chart.data.datasets[mi.max].data.push({ x: t, y: v });
-                chart.data.datasets[mi.avg].data.push({ x: t, y: v });
+                chart.data.datasets[idx[metric.key]].data.push({ x: t, y: v });
             });
             trimOld();
-            rollAxis();  // also calls chart.update('none')
+            rollAxis();
         });
 
-        // Rolling axis only — no periodic HTTP refresh. HTTP reloads happen on range change.
+        // Rolling axis tick — paused automatically while the user has zoomed in.
         setInterval(rollAxis, 1000);
     })();
     </script>

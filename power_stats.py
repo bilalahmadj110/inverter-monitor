@@ -679,11 +679,11 @@ class PowerStats:
             logger.error(f"Error recomputing daily stats: {e}")
             return {'updated': [], 'count': 0, 'error': str(e)}
 
-    def get_recent_readings(self, minutes=30, bucket_seconds=None, target_points=200):
+    def get_recent_readings(self, minutes=30, bucket_seconds=None, target_points=120):
         """Return power series for the last N minutes with adaptive server-side bucketing.
         Returns avg/min/max per bucket so the frontend can draw a mean line with a min/max envelope."""
         try:
-            minutes = max(1, min(int(minutes), 720))
+            minutes = max(1, min(int(minutes), 1440))
             total_seconds = minutes * 60
             if bucket_seconds is None:
                 bucket_seconds = max(3, total_seconds // max(1, target_points))
@@ -845,6 +845,76 @@ class PowerStats:
         except Exception as e:
             logger.error(f"Error getting outages: {e}")
             return {'outages': [], 'count': 0, 'total_down_seconds': 0, 'availability': 1.0}
+
+    def get_data_gaps(self, from_date=None, to_date=None, min_gap_seconds=60):
+        """Find gaps in power_readings.timestamp — periods where the reader wasn't producing data
+        (service stopped, USB disconnect, Pi reboot, power out at the monitoring side, etc.).
+        Distinct from get_outages() which reports grid-voltage outages.
+        Returns a list of {start, end, duration_seconds} plus totals/availability."""
+        try:
+            if to_date:
+                end_dt = datetime.strptime(to_date, '%Y-%m-%d') + timedelta(days=1)
+            else:
+                end_dt = datetime.now() + timedelta(days=1)
+            if from_date:
+                start_dt = datetime.strptime(from_date, '%Y-%m-%d')
+            else:
+                start_dt = end_dt - timedelta(days=7)
+
+            start_ts = int(start_dt.timestamp())
+            end_ts = int(end_dt.timestamp())
+            # Clamp the window end so "missing data from last reading until now" isn't reported
+            # as a gap when the user is looking at a range that extends into the future.
+            now_ts = int(time.time())
+            scan_end_ts = min(end_ts, now_ts)
+
+            threshold = max(30, int(min_gap_seconds))
+
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                SELECT timestamp
+                FROM power_readings
+                WHERE timestamp >= ? AND timestamp < ?
+                ORDER BY timestamp ASC
+                ''', (start_ts, scan_end_ts))
+                rows = [r[0] for r in cursor.fetchall()]
+
+            gaps = []
+            # Edge gap: no readings at all in the window, or first reading is past the window start
+            if not rows:
+                if scan_end_ts - start_ts >= threshold:
+                    gaps.append({'start': start_ts, 'end': scan_end_ts, 'duration_seconds': scan_end_ts - start_ts})
+            else:
+                if rows[0] - start_ts >= threshold:
+                    gaps.append({'start': start_ts, 'end': rows[0], 'duration_seconds': rows[0] - start_ts})
+                for i in range(1, len(rows)):
+                    delta = rows[i] - rows[i - 1]
+                    if delta >= threshold:
+                        gaps.append({
+                            'start': rows[i - 1],
+                            'end': rows[i],
+                            'duration_seconds': delta,
+                        })
+                if scan_end_ts - rows[-1] >= threshold:
+                    gaps.append({'start': rows[-1], 'end': scan_end_ts, 'duration_seconds': scan_end_ts - rows[-1]})
+
+            # Most recent first so the table's top row is the latest event.
+            gaps.sort(key=lambda g: g['start'], reverse=True)
+            total_down = sum(g['duration_seconds'] for g in gaps)
+            total_range = scan_end_ts - start_ts
+            return {
+                'from': datetime.fromtimestamp(start_ts).strftime('%Y-%m-%d'),
+                'to': datetime.fromtimestamp(end_ts - 1).strftime('%Y-%m-%d'),
+                'threshold_seconds': threshold,
+                'gaps': gaps,
+                'count': len(gaps),
+                'total_down_seconds': total_down,
+                'availability': round(1 - (total_down / total_range), 4) if total_range > 0 else 1.0,
+            }
+        except Exception as e:
+            logger.error(f"Error getting data gaps: {e}")
+            return {'gaps': [], 'count': 0, 'total_down_seconds': 0, 'availability': 1.0, 'threshold_seconds': min_gap_seconds}
 
     def get_reading_statistics(self):
         return {

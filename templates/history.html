@@ -43,8 +43,8 @@
         .panel-loading { opacity: 0.55; transition: opacity 0.2s ease; }
 
         /* Active outage preset */
-        .out-preset.active { background-color: rgb(37 99 235); color: #fff; }
-        .out-preset.active:hover { background-color: rgb(29 78 216); }
+        .out-preset.active, .gap-preset.active { background-color: rgb(37 99 235); color: #fff; }
+        .out-preset.active:hover, .gap-preset.active:hover { background-color: rgb(29 78 216); }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">
@@ -90,6 +90,7 @@
             <button data-tab="month"   class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Month</button>
             <button data-tab="year"    class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Year</button>
             <button data-tab="outages" class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Grid Outages</button>
+            <button data-tab="gaps"    class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Reader Outages</button>
         </div>
     </div>
 
@@ -266,6 +267,67 @@
                 </div>
             </div>
         </section>
+
+        <!-- READER-GAP (DATA OUTAGE) PANEL -->
+        <section data-panel="gaps" class="space-y-6 hidden">
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 flex flex-wrap items-center gap-3">
+                <label class="text-white/80 text-sm">From</label>
+                <input type="date" id="gap-from">
+                <label class="text-white/80 text-sm">To</label>
+                <input type="date" id="gap-to">
+                <label class="text-white/80 text-sm ml-2">Min gap</label>
+                <select id="gap-threshold" class="bg-white/10 border border-white/20 rounded px-2 py-1 text-sm text-white">
+                    <option value="60">1 min</option>
+                    <option value="120">2 min</option>
+                    <option value="300">5 min</option>
+                </select>
+                <button id="gap-apply" class="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white">Apply</button>
+                <button data-days="1"  class="gap-preset px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white">24h</button>
+                <button data-days="7"  class="gap-preset px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white">7d</button>
+                <button data-days="30" class="gap-preset px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white">30d</button>
+            </div>
+
+            <div class="bg-white/5 border border-white/10 rounded-lg p-3 text-xs text-white/60">
+                <i class="fas fa-circle-info mr-1"></i>
+                A <strong class="text-white/80">reader outage</strong> is a period where the monitor
+                stopped producing readings (service down, USB disconnect, Pi reboot, or the
+                monitoring host lost power). This is different from the grid outages above — those
+                track when the grid itself was unavailable based on grid voltage.
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-red-300 text-xs">Reader Outages</div>
+                    <div class="text-white text-2xl font-bold"><span id="gap-count">0</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-orange-300 text-xs">Total Downtime</div>
+                    <div class="text-white text-2xl font-bold"><span id="gap-total">0</span><span class="text-xs text-white/60 ml-1">h</span></div>
+                </div>
+                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+                    <div class="text-emerald-300 text-xs">Uptime</div>
+                    <div class="text-white text-2xl font-bold"><span id="gap-avail">100</span><span class="text-xs text-white/60 ml-1">%</span></div>
+                </div>
+            </div>
+
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
+                <h2 class="text-white font-semibold mb-3">Gap List</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-white/90">
+                        <thead class="text-white/60 text-xs uppercase border-b border-white/10">
+                            <tr>
+                                <th class="text-left py-2 px-2">Start</th>
+                                <th class="text-left py-2 px-2">End</th>
+                                <th class="text-right py-2 px-2">Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gap-list">
+                            <tr><td colspan="3" class="text-center text-white/50 py-6">No reader outages</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -338,6 +400,7 @@
                 if (tab === 'month') loadMonth(document.getElementById('month-input').value);
                 if (tab === 'year') loadYear(document.getElementById('year-input').value);
                 if (tab === 'outages') loadOutages();
+                if (tab === 'gaps') loadGaps();
             });
         });
 
@@ -643,6 +706,67 @@
         document.querySelectorAll('.out-preset').forEach((b) => {
             b.addEventListener('click', () => setOutRange(Number(b.dataset.days)));
         });
+
+        // ============ READER OUTAGES (DATA GAPS) TAB ============
+        async function loadGaps() {
+            const from = document.getElementById('gap-from').value;
+            const to = document.getElementById('gap-to').value;
+            const threshold = document.getElementById('gap-threshold').value || '60';
+            await withStatus('Loading reader outages…', async () => {
+                const res = await fetch(`/data-gaps?from=${from}&to=${to}&threshold=${threshold}`);
+                if (!res.ok) throw new Error('Request failed');
+                const data = await res.json();
+                document.getElementById('gap-count').textContent = data.count || 0;
+                document.getElementById('gap-total').textContent = ((data.total_down_seconds || 0) / 3600).toFixed(2);
+                document.getElementById('gap-avail').textContent = ((data.availability || 0) * 100).toFixed(2);
+
+                const list = document.getElementById('gap-list');
+                if (!data.gaps || data.gaps.length === 0) {
+                    list.innerHTML = '<tr><td colspan="3" class="text-center text-white/50 py-6">No reader outages in this range</td></tr>';
+                    showStatus('empty', 'No reader outages found', 4000);
+                    return;
+                }
+                list.innerHTML = data.gaps.map((g) => `
+                    <tr class="border-b border-white/5">
+                        <td class="py-2 px-2">${fmtTime(g.start)}</td>
+                        <td class="py-2 px-2">${fmtTime(g.end)}</td>
+                        <td class="py-2 px-2 text-right">${fmtDuration(g.duration_seconds)}</td>
+                    </tr>
+                `).join('');
+            }).catch(() => {});
+        }
+
+        function setGapRange(days) {
+            const to = new Date();
+            const from = new Date();
+            from.setDate(from.getDate() - days + 1);
+            document.getElementById('gap-from').value = isoDate(from);
+            document.getElementById('gap-to').value = isoDate(to);
+            document.querySelectorAll('.gap-preset').forEach((b) => {
+                b.classList.toggle('active', Number(b.dataset.days) === days);
+            });
+            loadGaps();
+        }
+        document.getElementById('gap-apply').addEventListener('click', () => {
+            document.querySelectorAll('.gap-preset').forEach((b) => b.classList.remove('active'));
+            loadGaps();
+        });
+        document.getElementById('gap-threshold').addEventListener('change', () => loadGaps());
+        document.querySelectorAll('.gap-preset').forEach((b) => {
+            b.addEventListener('click', () => setGapRange(Number(b.dataset.days)));
+        });
+
+        // Default the Reader Outages date inputs to the last 7 days, but don't load
+        // until the tab is actually opened (saves a query on first Reports render).
+        (function initGapDefaults() {
+            const to = new Date();
+            const from = new Date();
+            from.setDate(from.getDate() - 6);
+            document.getElementById('gap-from').value = isoDate(from);
+            document.getElementById('gap-to').value = isoDate(to);
+            const seven = document.querySelector('.gap-preset[data-days="7"]');
+            if (seven) seven.classList.add('active');
+        })();
 
         // ============ INIT ============
         // Populate year selector

@@ -229,7 +229,7 @@ def get_recent_readings():
         minutes = int(request.args.get('minutes', 30))
     except (TypeError, ValueError):
         minutes = 30
-    minutes = max(1, min(minutes, 720))
+    minutes = max(1, min(minutes, 1440))
     bucket_arg = request.args.get('bucket')
     try:
         bucket_seconds = int(bucket_arg) if bucket_arg else None
@@ -256,6 +256,18 @@ def get_outages():
     from_date = request.args.get('from')
     to_date = request.args.get('to')
     return jsonify(stats_manager.get_outages(from_date, to_date))
+
+
+@app.route('/data-gaps')
+@login_required
+def get_data_gaps():
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+    try:
+        threshold = int(request.args.get('threshold', 60))
+    except (TypeError, ValueError):
+        threshold = 60
+    return jsonify(stats_manager.get_data_gaps(from_date, to_date, threshold))
 
 
 @app.route('/raw-data')

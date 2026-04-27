@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Don't auto-back-up server credentials / session cookies to Google cloud. -->
+    <exclude domain="sharedpref" path="cookies.xml"/>
+</full-backup-content>

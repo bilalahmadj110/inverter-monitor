@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!--
+        Foreground = sun disc with 8 rays + centered lightning bolt, sized to fit inside
+        Android's 72dp safe zone (the center 66% of the 108dp canvas).
+        Coordinates picked so the icon looks balanced with the adaptive circle mask.
+    -->
+    <group>
+        <!-- Sun disc -->
+        <path
+            android:fillColor="#FCD34D"
+            android:pathData="M 54 36 m -15 0 a 15 15 0 1 0 30 0 a 15 15 0 1 0 -30 0" />
+
+        <!-- 8 rays -->
+        <path android:fillColor="#FCD34D"
+              android:pathData="M 52 16 L 56 16 L 55 24 L 53 24 Z" />
+        <path android:fillColor="#FCD34D"
+              android:pathData="M 52 48 L 56 48 L 55 56 L 53 56 Z" />
+        <path android:fillColor="#FCD34D"
+              android:pathData="M 72 34 L 72 38 L 64 37 L 64 35 Z" />
+        <path android:fillColor="#FCD34D"
+              android:pathData="M 36 34 L 36 38 L 44 37 L 44 35 Z" />
+        <path android:fillColor="#FCD34D"
+              android:pathData="M 67 20 L 70 23 L 64 28 L 61 25 Z" />
+        <path android:fillColor="#FCD34D"
+              android:pathData="M 41 20 L 38 23 L 44 28 L 47 25 Z" />
+        <path android:fillColor="#FCD34D"
+              android:pathData="M 67 52 L 70 49 L 64 44 L 61 47 Z" />
+        <path android:fillColor="#FCD34D"
+              android:pathData="M 41 52 L 38 49 L 44 44 L 47 47 Z" />
+
+        <!-- Lightning bolt inside the sun -->
+        <path
+            android:fillColor="#0F172A"
+            android:pathData="M 56 26 L 50 38 L 54 38 L 52 46 L 58 34 L 54 34 L 56 26 Z" />
+
+        <!-- Solar panel at the bottom — tilted slab with a 4x2 cell grid -->
+        <group
+            android:pivotX="54" android:pivotY="82" android:rotation="-10">
+            <path
+                android:fillColor="#60A5FA"
+                android:pathData="M 26 70 h 56 a 6 6 0 0 1 6 6 v 12 a 6 6 0 0 1 -6 6 h -56 a 6 6 0 0 1 -6 -6 v -12 a 6 6 0 0 1 6 -6 Z" />
+            <path
+                android:fillColor="#1D3C66"
+                android:pathData="M 34 76 v 12 M 48 76 v 12 M 62 76 v 12 M 76 76 v 12 M 20 82 h 68" />
+            <!-- Gold outline for the panel, matching the iOS icon accent -->
+            <path
+                android:fillColor="#00000000"
+                android:strokeColor="#FCD34D"
+                android:strokeWidth="1.5"
+                android:pathData="M 26 70 h 56 a 6 6 0 0 1 6 6 v 12 a 6 6 0 0 1 -6 6 h -56 a 6 6 0 0 1 -6 -6 v -12 a 6 6 0 0 1 6 -6 Z" />
+        </group>
+    </group>
+</vector>
