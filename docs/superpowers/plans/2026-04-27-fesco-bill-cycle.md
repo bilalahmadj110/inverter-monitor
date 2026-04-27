@@ -20,7 +20,7 @@
 - `templates/fesco_bill.html` — the new page (mirrors FESCO bill layout)
 - `static/js/fesco_bill.js` — cycle picker, edit modal, bootstrap form
 - `tests/__init__.py` — empty marker
-- `tests/conftest.py` — pytest fixtures (`tmp_db`, `freeze_today`)
+- `tests/conftest.py` — pytest fixtures (`tmp_db`, `seed_daily`)
 - `tests/test_lesco_tariff_fix_charges.py`
 - `tests/test_cost_config_defaults.py`
 - `tests/test_fesco_bill.py`
