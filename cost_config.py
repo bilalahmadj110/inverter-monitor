@@ -25,7 +25,18 @@ logger = logging.getLogger(__name__)
 DEFAULT_NON_TARIFF: dict[str, Any] = {
     "install_cost_pkr": 0,           # User enters this on the savings page.
     "system_start_date": None,       # ISO date 'YYYY-MM-DD'. None until set.
-    "monthly_billing_day": 1,        # First day of each month for cycle calc.
+    "monthly_billing_day": 1,        # Legacy: kept for back-compat, ignored by new cycle code.
+
+    # FESCO billing-cycle settings.
+    "reading_day_of_month": 26,
+    "weekend_rolls_to_monday": True,
+
+    # Bill metadata (shown on the FESCO Bill page header).
+    "consumer_id": "",
+    "tariff_code": "A-1a(01)",
+    "connection_date": None,         # ISO 'YYYY-MM-DD'.
+    "meter_no": "",
+    "discom_name": "FESCO",
 }
 
 
