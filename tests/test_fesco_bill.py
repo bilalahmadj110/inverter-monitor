@@ -58,8 +58,29 @@ def test_boundaries_target_31_clamps_to_last_day(tmp_db):
     start, end = fesco_bill.compute_cycle_boundaries(
         today, _cfg(reading_day_of_month=31), tmp_db
     )
-    # 28 Feb 2027 is Sunday → Mon 1 Mar
+    # 28 Feb 2027 is Sunday → Mon 1 Mar.
     assert end == date(2027, 3, 1)
+    # Previous reading: clamp 31 in Jan → Jan 31. Jan 31 2027 is Sunday → Mon Feb 1.
+    # Start = day after = Feb 2.
+    assert start == date(2027, 2, 2)
+    # And the cycle must not be inverted.
+    assert start <= end
+
+
+def test_boundaries_year_boundary_dec_to_jan(tmp_db):
+    # 26 Dec 2026 is Saturday → Mon 28 Dec. Today before that → cycle ends Dec 28.
+    today = date(2026, 12, 15)
+    start, end = fesco_bill.compute_cycle_boundaries(today, _cfg(), tmp_db)
+    assert end == date(2026, 12, 28)
+    # Previous reading: 26 Nov 2026 = Thursday, no roll. Start = 27 Nov.
+    assert start == date(2026, 11, 27)
+
+    # Today after 28 Dec → next cycle ends 26 Jan 2027 (Tuesday, no roll).
+    today2 = date(2026, 12, 30)
+    start2, end2 = fesco_bill.compute_cycle_boundaries(today2, _cfg(), tmp_db)
+    assert end2 == date(2027, 1, 26)
+    # Previous = 26 Dec → Mon 28 Dec. Start = 29 Dec.
+    assert start2 == date(2026, 12, 29)
 
 
 def test_boundaries_uses_last_closed_cycle_when_present(tmp_db):

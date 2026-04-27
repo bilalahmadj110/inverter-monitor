@@ -66,7 +66,12 @@ def _prev_month(d: date) -> date:
 
 
 def _last_closed_end_date(db_path: str) -> date | None:
-    """Most recent end_date among closed cycles, or None."""
+    """Most recent end_date among closed cycles, or None.
+
+    Tolerates whitespace and an ISO-8601 time suffix (`YYYY-MM-DDTHH:MM:SS`).
+    A row whose end_date is malformed will raise — silent fallback would
+    mask data corruption with a plausible-looking wrong answer.
+    """
     try:
         with sqlite3.connect(db_path) as conn:
             row = conn.execute(
@@ -78,11 +83,8 @@ def _last_closed_end_date(db_path: str) -> date | None:
         return None
     if not row or not row[0]:
         return None
-    try:
-        y, m, d = row[0].split("-")
-        return date(int(y), int(m), int(d))
-    except (ValueError, AttributeError):
-        return None
+    raw = row[0].strip().split("T")[0]
+    return date.fromisoformat(raw)
 
 
 def compute_cycle_boundaries(
@@ -113,8 +115,12 @@ def compute_cycle_boundaries(
     if last_closed is not None and last_closed < end:
         return last_closed + timedelta(days=1), end
 
-    # Fallback: rule-derived previous reading.
-    prev_anchor = _prev_month(end)
+    # Fallback: rule-derived previous reading. Walk back from the *unrolled*
+    # month anchor (iter_anchor), not from `end` — `end` may have rolled into
+    # the next month via the weekend rule, which would give a wrong previous.
+    prev_anchor = _prev_month(iter_anchor)
     prev_candidate = _clamp_to_month_end(prev_anchor.year, prev_anchor.month, target_day)
     prev_candidate = _apply_weekend_rule(prev_candidate, weekend)
-    return prev_candidate + timedelta(days=1), end
+    start = prev_candidate + timedelta(days=1)
+    assert start <= end, f"inverted cycle: {start} > {end}"
+    return start, end
