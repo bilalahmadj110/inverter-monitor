@@ -2047,9 +2047,11 @@ def client(tmp_path, monkeypatch):
         flask_app.config["WTF_CSRF_ENABLED"] = False
 
         # Mark session as logged in for all requests.
+        # auth.is_logged_in() checks session.get('uid'), not 'logged_in'.
         with flask_app.test_client() as c:
             with c.session_transaction() as sess:
-                sess["logged_in"] = True
+                sess["uid"] = "test-uid"
+                sess["user"] = "admin"
             yield c
 
 
