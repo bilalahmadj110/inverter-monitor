@@ -84,6 +84,47 @@ def compute_savings_for_month(db_path: str, month: str, config: dict[str, Any]) 
     }
 
 
+def _cycle_energy_kwh(db_path: str, start: date, end: date) -> dict[str, float]:
+    """SUM daily_stats energy fields between start and end (inclusive)."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            '''
+            SELECT
+                COALESCE(SUM(solar_energy), 0) AS solar_wh,
+                COALESCE(SUM(grid_energy),  0) AS grid_wh,
+                COALESCE(SUM(load_energy),  0) AS load_wh
+            FROM daily_stats
+            WHERE date BETWEEN ? AND ?
+            ''',
+            (start.isoformat(), end.isoformat()),
+        ).fetchone()
+    return {
+        "solar_kwh": (row["solar_wh"] or 0) / 1000.0,
+        "grid_kwh":  (row["grid_wh"]  or 0) / 1000.0,
+        "load_kwh":  (row["load_wh"]  or 0) / 1000.0,
+    }
+
+
+def compute_savings_for_cycle(
+    db_path: str, start: date, end: date, config: dict[str, Any]
+) -> dict[str, Any]:
+    """Solar savings for a billing cycle (date range). Same formula as
+    compute_savings_for_month but with explicit start/end bounds."""
+    energy = _cycle_energy_kwh(db_path, start, end)
+    bill_without = lesco_tariff.compute_bill(energy["load_kwh"], config)
+    bill_with    = lesco_tariff.compute_bill(energy["grid_kwh"], config)
+    savings = bill_without["total"] - bill_with["total"]
+    return {
+        "start": start.isoformat(),
+        "end":   end.isoformat(),
+        "energy": {k: round(v, 3) for k, v in energy.items()},
+        "bill_without_solar": bill_without,
+        "bill_with_solar": bill_with,
+        "savings_pkr": round(savings, 2),
+    }
+
+
 def compute_today(stats_manager, config: dict[str, Any]) -> dict[str, Any]:
     """Today's savings, valued at the *current marginal rate* — i.e. the rate
     of the next grid unit you'd consume given the month's grid usage so far.
@@ -258,24 +299,75 @@ def compute_slab_projection(db_path: str, config: dict[str, Any]) -> dict[str, A
 
 
 def build_full_payload(stats_manager, cost_config) -> dict[str, Any]:
-    """One-shot payload for the savings page: today + this month + lifetime
+    """One-shot payload for the savings page: today + this cycle + lifetime
     + slab projection + payback. The frontend gets everything in a single GET.
     """
+    import fesco_bill
+    import fesco_cycles
+
     cfg = cost_config.load()
     today_block = compute_today(stats_manager, cfg)
 
-    month = datetime.now().strftime('%Y-%m')
-    month_block = compute_savings_for_month(stats_manager.db_path, month, cfg)
+    today = date.today()
+    start, end = fesco_bill.compute_cycle_boundaries(today, cfg, stats_manager.db_path)
+    cycle_block = compute_savings_for_cycle(stats_manager.db_path, start, end, cfg)
+    cycle_block["label"] = fesco_bill.cycle_label_for(end)
 
-    lifetime = compute_lifetime(stats_manager.db_path, cfg, cfg.get("system_start_date"))
+    lifetime = compute_lifetime_from_cycles(stats_manager.db_path, cfg)
     payback = compute_payback(cfg.get("install_cost_pkr") or 0, lifetime["avg_daily_savings_pkr"])
     projection = compute_slab_projection(stats_manager.db_path, cfg)
 
     return {
         "config": cfg,
         "today": today_block,
-        "month": month_block,
+        "cycle": cycle_block,
         "lifetime": lifetime,
         "payback": payback,
         "projection": projection,
+    }
+
+
+def compute_lifetime_from_cycles(db_path: str, cfg: dict[str, Any]) -> dict[str, Any]:
+    """Walk the billing_cycles table for closed cycles and sum savings.
+    Falls back to the calendar-month version if no cycles exist."""
+    import fesco_cycles
+    store = fesco_cycles.CycleStore(db_path)
+    cycles = [c for c in store.list_cycles(limit=240) if c["status"] == "closed"]
+    if not cycles:
+        return compute_lifetime(db_path, cfg, cfg.get("system_start_date"))
+
+    cycles.sort(key=lambda c: c["end_date"])  # oldest first
+    months = []
+    total_savings = 0.0
+    total_solar = 0.0
+
+    for c in cycles:
+        # Reuse compute_savings_for_cycle for consistency with the cycle block.
+        try:
+            s = date.fromisoformat(c["start_date"])
+            e = date.fromisoformat(c["end_date"])
+        except (ValueError, TypeError):
+            continue
+        result = compute_savings_for_cycle(db_path, s, e, cfg)
+        months.append({
+            "month": c["cycle_label"],
+            "solar_kwh": result["energy"]["solar_kwh"],
+            "grid_kwh":  result["energy"]["grid_kwh"],
+            "load_kwh":  result["energy"]["load_kwh"],
+            "savings_pkr": result["savings_pkr"],
+        })
+        total_savings += result["savings_pkr"]
+        total_solar += result["energy"]["solar_kwh"]
+
+    first = date.fromisoformat(cycles[0]["start_date"])
+    today = date.today()
+    days_elapsed = max(1, (today - first).days + 1)
+
+    return {
+        "system_start_date": first.isoformat(),
+        "days_elapsed": days_elapsed,
+        "total_savings_pkr": round(total_savings, 2),
+        "total_solar_kwh": round(total_solar, 3),
+        "avg_daily_savings_pkr": round(total_savings / days_elapsed, 2),
+        "months": months,
     }
