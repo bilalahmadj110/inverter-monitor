@@ -190,7 +190,7 @@ class CycleStore:
                     return existing_open
                 # Close the stale open cycle.
                 start_d = _parse_iso(existing_open["start_date"])
-                if start_d:
+                if start_d and end_d:
                     energy = fesco_bill.aggregate_cycle(start_d, end_d, self.db_path)
                     units_est = energy["grid_kwh"]
                     bill_est = lesco_tariff.compute_bill(units_est, cfg)["total"]
