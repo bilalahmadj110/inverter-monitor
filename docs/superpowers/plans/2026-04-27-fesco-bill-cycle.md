@@ -2940,10 +2940,11 @@ git commit -m "feat(fesco): bill page JS — picker, edit modal, bootstrap form"
 ## Task 14: Add nav link to existing pages
 
 **Files:**
-- Modify: `templates/dashboard.html`
-- Modify: `templates/solar_flow.html`
+- Modify: `templates/solar_flow.html` (the `/` Live page)
 - Modify: `templates/savings.html`
-- Modify: `templates/history.html`
+- Modify: `templates/history.html` (the `/reports` page template)
+
+`templates/dashboard.html` (the legacy `/classic` Bootstrap-based UI) is NOT modified — it has a different visual identity and a Tailwind-styled link would look out of place. Users reach FESCO Bill from any of the three modern nav-having pages.
 
 For each of the four templates, find the nav `<div class="flex items-center gap-1">` block (the row with Live / Reports / Savings links) and add an `<a href="/fesco-bill">` link in the same style.
 
