@@ -1,3 +1,178 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>FESCO Bill</title></head>
-<body><h1>FESCO Bill</h1><p>Coming soon.</p></body></html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>FESCO Bill - Inverter Monitor</title>
+    <link rel="icon" type="image/png" href="/static/icons/favicon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .pulse-est { animation: pulse-est 2s ease-in-out infinite; }
+        @keyframes pulse-est {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">
+
+    <nav class="bg-black/30 backdrop-blur-sm border-b border-white/10">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-white font-semibold">
+                <i class="fas fa-solar-panel text-yellow-300"></i>
+                <div class="leading-tight">
+                    <div>Inverter Monitor</div>
+                    <div class="text-[8px] font-mono font-normal text-white/25 tracking-wide">build {{ app_version }}</div>
+                </div>
+            </div>
+            <div class="flex items-center gap-1">
+                <a href="/" class="px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Live</a>
+                <a href="/reports" class="px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Reports</a>
+                <a href="/savings" class="px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Savings</a>
+                <a href="/fesco-bill" class="px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white">FESCO Bill</a>
+                <form method="post" action="{{ url_for('auth.logout') }}" class="inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="px-3 py-1.5 rounded-lg text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white transition-colors" title="Sign out">
+                        <i class="fas fa-right-from-bracket"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-4xl mx-auto px-4 py-6" id="page-root">
+
+        <!-- Bootstrap state (shown only when no cycles exist) -->
+        <div id="bootstrap-pane" class="hidden bg-white/5 border border-white/10 rounded-xl p-6 mb-6">
+            <h2 class="text-2xl font-bold text-white mb-2">Welcome — record your last 12 months first</h2>
+            <p class="text-white/70 text-sm mb-4">
+                Open any recent FESCO bill. Type the 12 rows from its
+                <em>"MONTH / UNITS / BILL / PAYMENT"</em> grid below. We'll use
+                this to detect Protected status and seed your history.
+            </p>
+            <form id="bootstrap-form" class="space-y-2">
+                <div class="grid grid-cols-12 gap-2 text-xs text-white/50 px-2">
+                    <div class="col-span-3">Month</div>
+                    <div class="col-span-3">Units</div>
+                    <div class="col-span-3">Bill (PKR)</div>
+                    <div class="col-span-3">Paid (PKR)</div>
+                </div>
+                <div id="bootstrap-rows"></div>
+                <button type="submit" class="w-full mt-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold">
+                    <i class="fas fa-database mr-2"></i> Save 12-month history
+                </button>
+            </form>
+        </div>
+
+        <!-- Main bill view (hidden during bootstrap state) -->
+        <div id="bill-pane" class="hidden">
+            <!-- Cycle picker -->
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-file-invoice text-blue-300 text-2xl"></i>
+                    <div>
+                        <div class="text-white text-2xl font-bold" id="bill-title">FESCO Bill</div>
+                        <div class="text-white/50 text-xs" id="bill-subtitle"></div>
+                    </div>
+                </div>
+                <select id="cycle-picker" class="bg-white/10 border border-white/20 text-white text-sm rounded-lg px-3 py-2"></select>
+            </div>
+
+            <!-- Header strip (consumer + dates) -->
+            <div id="header-strip" class="bg-white/5 border border-white/10 rounded-xl p-4 mb-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm"></div>
+
+            <!-- Status banner (estimated/actual + Protected) -->
+            <div id="status-banner" class="rounded-xl p-4 mb-4"></div>
+
+            <!-- Charges grid (2 columns: FESCO | GOVT) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+                    <div class="text-xs uppercase tracking-wider text-white/50 mb-3">FESCO Charges</div>
+                    <div id="fesco-charges" class="space-y-1.5 text-sm"></div>
+                </div>
+                <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+                    <div class="text-xs uppercase tracking-wider text-white/50 mb-3">Govt Charges</div>
+                    <div id="govt-charges" class="space-y-1.5 text-sm"></div>
+                </div>
+            </div>
+
+            <!-- Slab breakdown -->
+            <div class="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
+                <div class="text-xs uppercase tracking-wider text-white/50 mb-3">Slab Breakdown</div>
+                <div id="slab-breakdown" class="text-sm"></div>
+            </div>
+
+            <!-- Payable -->
+            <div id="payable-block" class="bg-blue-900/30 border border-blue-500/30 rounded-xl p-4 mb-4"></div>
+
+            <!-- 12-month history -->
+            <div class="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
+                <div class="text-xs uppercase tracking-wider text-white/50 mb-3">Last 12 months</div>
+                <table class="w-full text-sm">
+                    <thead class="text-white/50 text-xs uppercase">
+                        <tr>
+                            <th class="text-left py-2">Month</th>
+                            <th class="text-right py-2">Units</th>
+                            <th class="text-right py-2">Bill</th>
+                            <th class="text-right py-2">Paid</th>
+                            <th class="text-right py-2 w-8"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Record actual bill CTA (only on open cycle) -->
+            <button id="record-actual-btn" class="hidden w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">
+                <i class="fas fa-pen-to-square mr-2"></i> Enter actual bill for <span id="record-actual-label"></span>
+            </button>
+        </div>
+
+        <!-- Edit modal -->
+        <div id="edit-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+            <div class="bg-gray-900 border border-white/10 rounded-xl w-full max-w-md p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-white text-lg font-bold">Enter actual bill</h3>
+                    <button id="edit-close" class="text-white/50 hover:text-white"><i class="fas fa-xmark"></i></button>
+                </div>
+                <form id="edit-form" class="space-y-3">
+                    <input type="hidden" id="edit-label">
+                    <div>
+                        <label class="block text-white/70 text-xs mb-1">Reading date</label>
+                        <input id="edit-reading-date" type="date" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm" required>
+                    </div>
+                    <div>
+                        <label class="block text-white/70 text-xs mb-1">Units consumed</label>
+                        <input id="edit-units" type="number" min="0" step="1" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm" required>
+                    </div>
+                    <div>
+                        <label class="block text-white/70 text-xs mb-1">Bill amount (PKR)</label>
+                        <input id="edit-bill" type="number" step="0.01" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm" required>
+                    </div>
+                    <div>
+                        <label class="block text-white/70 text-xs mb-1">Paid amount (PKR, optional)</label>
+                        <input id="edit-paid" type="number" step="0.01" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-white/70 text-xs mb-1">FPA per unit (PKR, optional)</label>
+                        <input id="edit-fpa" type="number" step="0.0001" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-white/70 text-xs mb-1">Notes</label>
+                        <textarea id="edit-notes" rows="2" class="w-full bg-white/10 border border-white/20 text-white rounded-lg px-3 py-2 text-sm"></textarea>
+                    </div>
+                    <button type="submit" class="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold">
+                        Save
+                    </button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="/static/js/fesco_bill.js"></script>
+</body>
+</html>
