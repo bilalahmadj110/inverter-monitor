@@ -67,6 +67,11 @@ socketio = SocketIO(
 stats_manager = power_stats.get_instance()
 cost_cfg = cost_config_module.get_instance(stats_manager.db_path)
 
+import fesco_cycles as fesco_cycles_module
+import fesco_bill
+import lesco_tariff
+cycle_store = fesco_cycles_module.get_instance(stats_manager.db_path)
+
 
 def _on_reading(status, total_readings):
     """Fired for every successful inverter read. Push to WebSocket clients;
@@ -155,6 +160,12 @@ def reports():
 @login_required
 def savings_page():
     return render_template('savings.html')
+
+
+@app.route('/fesco-bill')
+@login_required
+def fesco_bill_page():
+    return render_template('fesco_bill.html')
 
 
 # ---- Read-only JSON endpoints (login required, generous rate limit) -----------------------
@@ -367,6 +378,183 @@ def savings_preview_bill():
     base = cost_cfg.load()
     base.update(overrides)
     return jsonify(lesco_tariff.compute_bill(units, base))
+
+
+# ---- FESCO Bill JSON endpoints --------------------------------------------
+
+def _build_bill_payload(label: str | None) -> dict:
+    """Assemble the full /fesco/bill response for one cycle (open if label=None)."""
+    from datetime import date as _date, timedelta as _td
+    cfg = cost_cfg.load()
+    today = _date.today()
+    cycle_store.ensure_open_cycle(today, cfg)
+
+    if label:
+        cycle = cycle_store.get_cycle(label)
+        if cycle is None:
+            return {"error": f"unknown cycle: {label}"}
+    else:
+        cycle = next(
+            (c for c in cycle_store.list_cycles(limit=24) if c["status"] == "open"),
+            None,
+        )
+        if cycle is None:
+            return {"error": "no open cycle"}
+
+    end = _date.fromisoformat(cycle["end_date"])
+
+    # Forecast block (only meaningful for open cycle).
+    forecast = (
+        fesco_bill.forecast_open_cycle(today, cfg, stats_manager.db_path)
+        if cycle["status"] == "open" else None
+    )
+
+    # Bill breakdown — for open cycle use forecast units; for closed use actual or estimated.
+    if cycle["status"] == "open":
+        units_for_bill = forecast["projected_units"] if forecast else 0
+    else:
+        units_for_bill = (
+            cycle["units_actual"]
+            if cycle["units_actual"] is not None
+            else (cycle["units_estimated"] or 0)
+        )
+    bill_breakdown = lesco_tariff.compute_bill(units_for_bill, cfg)
+
+    # Late-payment surcharge projections.
+    payable = bill_breakdown["total"]
+    lp = {
+        "phase_1_pkr": round(payable * fesco_bill.LP_PHASE_1_PERCENT / 100, 2),
+        "phase_2_pkr": round(payable * fesco_bill.LP_PHASE_2_PERCENT / 100, 2),
+    }
+
+    # Reading + due dates.
+    reading_date = end
+    due_date = reading_date + _td(days=fesco_bill.DUE_DATE_OFFSET_DAYS)
+    lp_phase_2_date = due_date + _td(days=fesco_bill.LP_PHASE_2_DAYS)
+
+    # 12-month history (most-recent 12 closed cycles, newest-first).
+    all_cycles = cycle_store.list_cycles(limit=24)
+    history = [
+        {
+            "label": c["cycle_label"],
+            "units": c["units_actual"] if c["units_actual"] is not None
+                     else c["units_estimated"],
+            "bill_amount": c["bill_amount_actual"]
+                           if c["bill_amount_actual"] is not None
+                           else c["bill_amount_estimated"],
+            "paid": c["payment_amount"],
+            "is_actual": c["units_actual"] is not None,
+        }
+        for c in all_cycles if c["status"] == "closed"
+    ][:12]
+
+    # Status detection (uses oldest-first list).
+    closed_oldest_first = list(reversed([c for c in all_cycles if c["status"] == "closed"]))
+    status_block = fesco_bill.detect_protected_status(closed_oldest_first)
+    if forecast:
+        flip = fesco_bill.predict_status_flip(closed_oldest_first, forecast, cfg)
+        status_block["flip_prediction"] = flip
+
+    return {
+        "cycle": cycle,
+        "header": {
+            "consumer_id": cfg.get("consumer_id"),
+            "tariff_code": cfg.get("tariff_code"),
+            "load_kw": cfg.get("sanctioned_load_kw"),
+            "connection_date": cfg.get("connection_date"),
+            "meter_no": cfg.get("meter_no"),
+            "discom_name": cfg.get("discom_name"),
+            "reading_date": reading_date.isoformat(),
+            "due_date": due_date.isoformat(),
+            "lp_phase_2_date": lp_phase_2_date.isoformat(),
+        },
+        "forecast": forecast,
+        "bill_breakdown": bill_breakdown,
+        "lp_surcharge": lp,
+        "history": history,
+        "status": status_block,
+    }
+
+
+@app.route('/fesco/cycles')
+@login_required
+def fesco_list_cycles():
+    return jsonify({"cycles": cycle_store.list_cycles(limit=24)})
+
+
+@app.route('/fesco/bill')
+@login_required
+def fesco_bill_data():
+    label = request.args.get('cycle')
+    return jsonify(_build_bill_payload(label))
+
+
+@app.route('/fesco/status')
+@login_required
+def fesco_status():
+    from datetime import date as _date
+    cfg = cost_cfg.load()
+    cycle_store.ensure_open_cycle(_date.today(), cfg)
+    cycles = cycle_store.list_cycles(limit=24)
+    closed_oldest_first = list(reversed([c for c in cycles if c["status"] == "closed"]))
+    status = fesco_bill.detect_protected_status(closed_oldest_first)
+
+    open_cycle = next((c for c in cycles if c["status"] == "open"), None)
+    if open_cycle:
+        forecast = fesco_bill.forecast_open_cycle(
+            _date.today(), cfg, stats_manager.db_path
+        )
+        status["flip_prediction"] = fesco_bill.predict_status_flip(
+            closed_oldest_first, forecast, cfg
+        )
+    return jsonify(status)
+
+
+@app.route('/fesco/cycle', methods=['POST'])
+@login_required
+@limiter.limit('30 per minute')
+def fesco_upsert_cycle():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or "cycle_label" not in body:
+        return jsonify({"success": False, "error": "cycle_label required"}), 400
+    try:
+        result = cycle_store.upsert_cycle(body)
+        audit('fesco_cycle_upsert', label=body.get("cycle_label"))
+        return jsonify({"success": True, "cycle": result})
+    except Exception as e:
+        logger.error(f"fesco_upsert failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/fesco/bootstrap', methods=['POST'])
+@login_required
+@limiter.limit('5 per minute')
+def fesco_bootstrap():
+    body = request.get_json(silent=True) or {}
+    rows = body.get("rows") or []
+    if not isinstance(rows, list):
+        return jsonify({"success": False, "error": "rows must be a list"}), 400
+    try:
+        cfg = cost_cfg.load()
+        inserted = cycle_store.bootstrap_history(rows, cfg)
+        audit('fesco_bootstrap', count=inserted)
+        return jsonify({"success": True, "inserted": inserted})
+    except Exception as e:
+        logger.error(f"fesco_bootstrap failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/fesco/cycle/<label>', methods=['DELETE'])
+@login_required
+@limiter.limit('10 per minute')
+def fesco_delete_cycle(label):
+    try:
+        cycle_store.delete_cycle(label)
+        audit('fesco_cycle_delete', label=label)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"fesco_delete failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route('/ai/status')
