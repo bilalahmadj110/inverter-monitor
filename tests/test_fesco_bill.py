@@ -141,3 +141,71 @@ def test_aggregate_cycle_inclusive_bounds(tmp_db, seed_daily):
     # Start and end days both included.
     result = fesco_bill.aggregate_cycle(date(2026, 3, 27), date(2026, 4, 26), tmp_db)
     assert result["solar_kwh"] == pytest.approx(2.0)
+
+
+# -------------------------- forecast_open_cycle --------------------------
+
+def test_forecast_open_cycle_run_rate(tmp_db, seed_daily):
+    """At day 10 of a 30-day cycle, having used 50 kWh, projection = 150 kWh."""
+    # Cycle: 27 Feb..26 Mar 2026 (28 days). Today: midpoint, 13 Mar.
+    # Seed grid usage for days 1-15 of cycle (27 Feb..13 Mar).
+    cycle_start = date(2026, 2, 27)
+    today = date(2026, 3, 13)
+    elapsed = (today - cycle_start).days + 1  # 15
+    total = (date(2026, 3, 26) - cycle_start).days + 1  # 28
+
+    # Seed exactly 30 kWh of grid in the first 15 days (so projection ≈ 56).
+    for i in range(elapsed):
+        d = (cycle_start + timedelta(days=i)).isoformat()
+        seed_daily(d, grid_wh=2000)  # 2 kWh/day
+
+    cfg = _cfg()
+    result = fesco_bill.forecast_open_cycle(today, cfg, tmp_db)
+    assert result["start"] == cycle_start
+    assert result["end"] == date(2026, 3, 26)
+    assert result["days_elapsed"] == 15
+    assert result["days_remaining"] == 13
+    assert result["units_so_far"] == pytest.approx(30.0)
+    # projected = 30 * 28/15 = 56.0
+    assert result["projected_units"] == pytest.approx(56.0)
+    # bill breakdown returned
+    assert "forecast_bill" in result
+    assert result["forecast_bill"]["units"] == pytest.approx(56.0)
+
+
+def test_forecast_open_cycle_zero_elapsed_returns_zero_projection(tmp_db, seed_daily):
+    today = date(2026, 2, 27)  # day 1 of cycle, no data yet
+    cfg = _cfg()
+    result = fesco_bill.forecast_open_cycle(today, cfg, tmp_db)
+    assert result["units_so_far"] == 0.0
+    assert result["projected_units"] == 0.0
+
+
+def test_forecast_open_cycle_includes_same_month_last_year(tmp_db, seed_daily):
+    """When billing_cycles has a Mar25 row, forecast surfaces its units_actual."""
+    with sqlite3.connect(tmp_db) as conn:
+        conn.execute('''
+            CREATE TABLE billing_cycles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cycle_label TEXT NOT NULL UNIQUE,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                status TEXT NOT NULL,
+                units_estimated REAL, units_actual INTEGER,
+                bill_amount_estimated REAL, bill_amount_actual REAL,
+                payment_amount REAL, fpa_per_unit_actual REAL,
+                notes TEXT, updated_at INTEGER NOT NULL
+            )
+        ''')
+        conn.execute(
+            "INSERT INTO billing_cycles "
+            "(cycle_label, start_date, end_date, status, units_actual, updated_at) "
+            "VALUES ('Mar25', '2025-02-27', '2025-03-26', 'closed', 115, 0)"
+        )
+        conn.commit()
+
+    today = date(2026, 3, 13)
+    cfg = _cfg()
+    result = fesco_bill.forecast_open_cycle(today, cfg, tmp_db)
+    assert result["same_month_last_year_units"] == 115
+    assert result["same_month_last_year_label"] == "Mar25"

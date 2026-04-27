@@ -147,3 +147,93 @@ def aggregate_cycle(start: date, end: date, db_path: str) -> dict[str, float]:
         "grid_kwh":  (row["grid_wh"]  or 0) / 1000.0,
         "load_kwh":  (row["load_wh"]  or 0) / 1000.0,
     }
+
+
+_MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def cycle_label_for(end: date) -> str:
+    """Convert an end_date to FESCO-style 'Mar26' label."""
+    return f"{_MONTH_ABBR[end.month - 1]}{end.year % 100:02d}"
+
+
+def _label_minus_one_year(label: str) -> str | None:
+    """'Mar26' → 'Mar25'. Returns None on parse failure."""
+    if len(label) < 5:
+        return None
+    mon = label[:3]
+    try:
+        yy = int(label[3:])
+    except ValueError:
+        return None
+    return f"{mon}{(yy - 1) % 100:02d}"
+
+
+def _lookup_units_actual_by_label(db_path: str, label: str) -> int | None:
+    try:
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT units_actual FROM billing_cycles "
+                "WHERE cycle_label = ?",
+                (label,),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if not row or row[0] is None:
+        return None
+    return int(row[0])
+
+
+def forecast_open_cycle(
+    today: date, cfg: dict[str, Any], db_path: str
+) -> dict[str, Any]:
+    """Run-rate forecast for the open cycle containing `today`.
+
+    Returns:
+      {
+        start, end, days_elapsed, days_remaining,
+        units_so_far, daily_avg_kwh, projected_units,
+        forecast_bill: {...full compute_bill result with fix_charges...},
+        same_month_last_year_label, same_month_last_year_units
+      }
+    """
+    start, end = compute_cycle_boundaries(today, cfg, db_path)
+    total_days = (end - start).days + 1
+    elapsed_days = max(0, (today - start).days + 1)
+    elapsed_days = min(elapsed_days, total_days)
+    days_remaining = max(0, total_days - elapsed_days)
+
+    energy = aggregate_cycle(start, today if today <= end else end, db_path)
+    units_so_far = energy["grid_kwh"]
+
+    if elapsed_days > 0:
+        daily_avg = units_so_far / elapsed_days
+        projected = units_so_far * (total_days / elapsed_days)
+    else:
+        daily_avg = 0.0
+        projected = 0.0
+
+    forecast_bill = lesco_tariff.compute_bill(projected, cfg)
+
+    label = cycle_label_for(end)
+    last_year_label = _label_minus_one_year(label)
+    last_year_units = (
+        _lookup_units_actual_by_label(db_path, last_year_label)
+        if last_year_label else None
+    )
+
+    return {
+        "label": label,
+        "start": start,
+        "end": end,
+        "days_elapsed": elapsed_days,
+        "days_remaining": days_remaining,
+        "total_days": total_days,
+        "units_so_far": round(units_so_far, 3),
+        "daily_avg_kwh": round(daily_avg, 3),
+        "projected_units": round(projected, 3),
+        "forecast_bill": forecast_bill,
+        "same_month_last_year_label": last_year_label,
+        "same_month_last_year_units": last_year_units,
+    }
