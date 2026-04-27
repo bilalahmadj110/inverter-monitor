@@ -283,3 +283,104 @@ def detect_protected_status(closed_cycles: list[dict[str, Any]]) -> dict[str, An
         "max_units_in_window": max_units,
         "violator_cycle": max_label,
     }
+
+
+PREDICTION_HORIZON_MONTHS = 6
+TRAILING_AVG_WINDOW = 3
+NEXT_LABEL_PLACEHOLDER = "+{i}"  # for hypothetical future cycles
+
+
+def _next_cycle_label(prev_label: str) -> str:
+    """'Mar26' → 'Apr26'; 'Dec26' → 'Jan27'. Falls back to '+i' style for
+    unparseable labels (used by tests that don't care about real labels)."""
+    if len(prev_label) < 5:
+        return prev_label + "+1"
+    mon = prev_label[:3]
+    try:
+        yy = int(prev_label[3:])
+    except ValueError:
+        return prev_label + "+1"
+    if mon not in _MONTH_ABBR:
+        return prev_label + "+1"
+    idx = _MONTH_ABBR.index(mon)
+    if idx == 11:
+        return f"Jan{(yy + 1) % 100:02d}"
+    return f"{_MONTH_ABBR[idx + 1]}{yy:02d}"
+
+
+def predict_status_flip(
+    closed_cycles: list[dict[str, Any]],
+    open_forecast: dict[str, Any],
+    cfg: dict[str, Any],
+) -> dict[str, Any]:
+    """Walk a forward timeline (closed + open forecast + 6 hypothetical cycles
+    using trailing-3-month average) and return the first cycle where the
+    rolling-6-cycle protected status differs from the current status.
+
+    Returns: { flips_to, at_cycle, condition, horizon_end }
+    """
+    closed = [c for c in closed_cycles if c.get("status", "closed") == "closed"]
+
+    timeline: list[tuple[str, float]] = [
+        (c["cycle_label"], _cycle_units(c) or 0.0) for c in closed
+    ]
+    forecast_label = open_forecast.get("label") or "open"
+    timeline.append((forecast_label, float(open_forecast.get("projected_units") or 0.0)))
+
+    # Trailing average from the last TRAILING_AVG_WINDOW timeline entries.
+    tail = timeline[-TRAILING_AVG_WINDOW:]
+    if tail:
+        trailing_avg = sum(u for _, u in tail) / len(tail)
+    else:
+        trailing_avg = 0.0
+
+    # Append PREDICTION_HORIZON_MONTHS hypothetical cycles.
+    last_label = timeline[-1][0]
+    for _ in range(PREDICTION_HORIZON_MONTHS):
+        last_label = _next_cycle_label(last_label)
+        timeline.append((last_label, trailing_avg))
+
+    current_status = detect_protected_status(closed)["status"]
+    if current_status == "unknown":
+        # With < 6 closed, the first flip happens once we accumulate 6 in timeline.
+        prev_status = None
+    else:
+        prev_status = current_status
+
+    # Scan from the index of the open-forecast entry onward.
+    forecast_idx = len(closed)  # 0-based index of open_forecast in timeline
+
+    for i in range(forecast_idx, len(timeline)):
+        if i < PROTECTED_WINDOW_CYCLES - 1:
+            continue
+        window = timeline[i - PROTECTED_WINDOW_CYCLES + 1: i + 1]
+        max_units = max(u for _, u in window)
+        status = (
+            "protected"
+            if max_units <= PROTECTED_THRESHOLD_UNITS
+            else "unprotected"
+        )
+        if prev_status is None:
+            prev_status = status
+            continue
+        if status != prev_status:
+            is_forecast_or_hypo = i >= forecast_idx
+            condition = None
+            if is_forecast_or_hypo and status == "protected":
+                condition = (
+                    f"if {timeline[i][0]} <= {PROTECTED_THRESHOLD_UNITS} units"
+                )
+            return {
+                "flips_to": status,
+                "at_cycle": timeline[i][0],
+                "condition": condition,
+                "horizon_end": timeline[-1][0],
+            }
+        prev_status = status
+
+    return {
+        "flips_to": None,
+        "at_cycle": None,
+        "condition": None,
+        "horizon_end": timeline[-1][0],
+    }

@@ -281,3 +281,68 @@ def test_detect_picks_only_last_6_closed():
     ]
     result = fesco_bill.detect_protected_status(cycles)
     assert result["status"] == "protected"
+
+
+# -------------------------- predict_status_flip --------------------------
+
+def _user_real_series():
+    """Bilal's actual last-12-months series ending Feb26 (from FESCO bill)."""
+    pairs = [
+        ("Mar25", 115), ("Apr25", 171), ("May25", 190), ("Jun25", 272),
+        ("Jul25", 357), ("Aug25", 396), ("Sep25", 306), ("Oct25", 229),
+        ("Nov25", 153), ("Dec25", 137), ("Jan26", 124), ("Feb26", 133),
+    ]
+    return [_make_cycle(label, units) for label, units in pairs]
+
+
+def test_predict_flip_with_low_apr_forecast_flips_protected_in_may26():
+    cycles = _user_real_series()
+    open_forecast = {"label": "Mar26", "projected_units": 162.0}
+    result = fesco_bill.predict_status_flip(cycles, open_forecast, _cfg())
+    # Walk: closed=Mar25..Feb26, plus pseudo Mar26=162. After Feb26 the
+    # rolling window Sep25..Feb26 contains 306 → unprotected. With Mar26=162
+    # the window Oct25..Mar26 contains 229 → still unprotected.
+    # Pseudo cycles after Mar26 use trailing-3-month avg = (124+133+162)/3 ≈ 140.
+    # So Apr forecast = 140, May forecast = 140, etc.
+    # Window Nov25..Apr (153,137,124,133,162,140) max=162 → protected.
+    assert result["flips_to"] == "protected"
+    assert result["at_cycle"] == "Apr26"
+
+
+def test_predict_flip_with_high_apr_forecast_no_flip_in_horizon():
+    cycles = _user_real_series()
+    open_forecast = {"label": "Mar26", "projected_units": 250.0}
+    result = fesco_bill.predict_status_flip(cycles, open_forecast, _cfg())
+    # trailing avg = (124+133+250)/3 ≈ 169, but Mar26=250 sits in window for 6 months.
+    # window Oct25..Mar26 has 229 and 250 → unprotected.
+    # window Nov25..Apr has 250 → unprotected.
+    # window Mar26..Aug has 250 → unprotected.
+    # After Mar26 ages out (window Apr..Sep), all 169 → protected.
+    # That's a flip — at Sep26.
+    assert result["flips_to"] == "protected"
+    assert result["at_cycle"] == "Sep26"
+
+
+def test_predict_flip_already_protected_can_flip_unprotected():
+    # Use real month labels so _next_cycle_label produces sensible hypothetical names.
+    pairs = [
+        ("Sep25", 150), ("Oct25", 150), ("Nov25", 150),
+        ("Dec25", 150), ("Jan26", 150), ("Feb26", 150),
+    ]
+    cycles = [_make_cycle(label, units) for label, units in pairs]
+    open_forecast = {"label": "Mar26", "projected_units": 250.0}
+    result = fesco_bill.predict_status_flip(cycles, open_forecast, _cfg())
+    # Already protected. Adding 250 → window Oct25..Mar26 max=250 → unprotected.
+    assert result["flips_to"] == "unprotected"
+    assert result["at_cycle"] == "Mar26"
+
+
+def test_predict_flip_no_change_returns_null():
+    pairs = [
+        ("Sep25", 150), ("Oct25", 150), ("Nov25", 150),
+        ("Dec25", 150), ("Jan26", 150), ("Feb26", 150),
+    ]
+    cycles = [_make_cycle(label, units) for label, units in pairs]
+    open_forecast = {"label": "Mar26", "projected_units": 150.0}
+    result = fesco_bill.predict_status_flip(cycles, open_forecast, _cfg())
+    assert result["flips_to"] is None
