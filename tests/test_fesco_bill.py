@@ -111,3 +111,33 @@ def test_boundaries_uses_last_closed_cycle_when_present(tmp_db):
     start, end = fesco_bill.compute_cycle_boundaries(today, _cfg(), tmp_db)
     assert start == date(2026, 3, 1)  # day after 28 Feb
     assert end == date(2026, 3, 26)
+
+
+# -------------------------- aggregate_cycle --------------------------
+
+def test_aggregate_cycle_sums_daily_stats_kwh(tmp_db, seed_daily):
+    # Seed 5 daily rows in Wh; sum should come back in kWh.
+    seed_daily("2026-03-25", solar_wh=10000, grid_wh=2000, load_wh=11000)  # outside (before)
+    seed_daily("2026-03-27", solar_wh=8000,  grid_wh=3000, load_wh=10000)
+    seed_daily("2026-03-28", solar_wh=9000,  grid_wh=2500, load_wh=10500)
+    seed_daily("2026-04-01", solar_wh=7000,  grid_wh=4000, load_wh=10000)
+    seed_daily("2026-04-26", solar_wh=6000,  grid_wh=5000, load_wh=10000)
+    seed_daily("2026-04-27", solar_wh=5000,  grid_wh=6000, load_wh=10000)  # outside (after)
+
+    result = fesco_bill.aggregate_cycle(date(2026, 3, 27), date(2026, 4, 26), tmp_db)
+    assert result["solar_kwh"] == pytest.approx(30.0)   # 8+9+7+6
+    assert result["grid_kwh"]  == pytest.approx(14.5)   # 3+2.5+4+5
+    assert result["load_kwh"]  == pytest.approx(40.5)   # 10+10.5+10+10
+
+
+def test_aggregate_cycle_empty_range_returns_zeros(tmp_db):
+    result = fesco_bill.aggregate_cycle(date(2026, 1, 1), date(2026, 1, 31), tmp_db)
+    assert result == {"solar_kwh": 0.0, "grid_kwh": 0.0, "load_kwh": 0.0}
+
+
+def test_aggregate_cycle_inclusive_bounds(tmp_db, seed_daily):
+    seed_daily("2026-03-27", solar_wh=1000, grid_wh=1000, load_wh=1000)
+    seed_daily("2026-04-26", solar_wh=1000, grid_wh=1000, load_wh=1000)
+    # Start and end days both included.
+    result = fesco_bill.aggregate_cycle(date(2026, 3, 27), date(2026, 4, 26), tmp_db)
+    assert result["solar_kwh"] == pytest.approx(2.0)

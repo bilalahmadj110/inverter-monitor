@@ -124,3 +124,26 @@ def compute_cycle_boundaries(
     start = prev_candidate + timedelta(days=1)
     assert start <= end, f"inverted cycle: {start} > {end}"
     return start, end
+
+
+def aggregate_cycle(start: date, end: date, db_path: str) -> dict[str, float]:
+    """Sum daily_stats energy fields between start and end (inclusive).
+    Returns kWh values (daily_stats stores Wh)."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            '''
+            SELECT
+                COALESCE(SUM(solar_energy), 0) AS solar_wh,
+                COALESCE(SUM(grid_energy),  0) AS grid_wh,
+                COALESCE(SUM(load_energy),  0) AS load_wh
+            FROM daily_stats
+            WHERE date BETWEEN ? AND ?
+            ''',
+            (start.isoformat(), end.isoformat()),
+        ).fetchone()
+    return {
+        "solar_kwh": (row["solar_wh"] or 0) / 1000.0,
+        "grid_kwh":  (row["grid_wh"]  or 0) / 1000.0,
+        "load_kwh":  (row["load_wh"]  or 0) / 1000.0,
+    }
