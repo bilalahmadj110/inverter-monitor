@@ -25,6 +25,12 @@ class SolarFlowDashboard {
         this.latestConfig = {};
         this.passwordRequired = false;
         this.currentModal = null;
+        // Discrete charge-current values the inverter accepts (QMCHGCR/QMUCHGCR), loaded lazily.
+        this.selectableCurrents = null;
+        // Sticky modal toast {cls,text}: the sheet re-renders on every live reading, so the
+        // toast is held here and re-applied after each rebuild instead of living only in the DOM.
+        this.modalToast = null;
+        this._modalToastTimer = null;
 
         this.initializeSocketEvents();
         this.initializeWarningBanner();
@@ -277,6 +283,7 @@ class SolarFlowDashboard {
 
     initializeComponentModals() {
         this.refreshExtras();
+        this.loadSelectableCurrents();
 
         const refreshBtn = document.getElementById('extras-refresh');
         if (refreshBtn) {
@@ -315,6 +322,58 @@ class SolarFlowDashboard {
         if (this.needsConfig(component) && !this.hasConfig()) {
             this.refreshExtras();
         }
+        // The battery panel's charge-current dropdowns need the selectable list.
+        if (component === 'battery' && !this.selectableCurrents) {
+            this.loadSelectableCurrents();
+        }
+    }
+
+    async loadSelectableCurrents() {
+        if (this.selectableCurrents) return this.selectableCurrents;
+        try {
+            const res = await fetch('/inverter/selectable-currents', { credentials: 'same-origin' });
+            if (res.ok) this.selectableCurrents = await res.json();
+        } catch (e) { /* ignore — dropdowns fall back to the current value only */ }
+        // If the battery sheet is already open, refresh it so the options populate.
+        if (this.currentModal === 'battery') this.rerenderCurrentModal();
+        return this.selectableCurrents;
+    }
+
+    // ---- editable-parameter row builders (battery / inverter settings) ----------------------
+
+    voltageRow(label, param, cur) {
+        const now = (cur != null && cur !== '') ? `<span class="cur">now ${cur} V</span>` : '';
+        const val = (cur != null && cur !== '') ? cur : '';
+        return `
+            <div class="param-row">
+                <span class="k">${label}${now}</span>
+                <input type="number" step="0.1" min="0" inputmode="decimal" data-param-input="${param}" value="${val}">
+                <button class="apply" data-action="set-param" data-param="${param}">Set</button>
+            </div>`;
+    }
+
+    currentRow(label, param, selKey, cur) {
+        const now = (cur != null && cur !== '') ? `<span class="cur">now ${cur} A</span>` : '';
+        return `
+            <div class="param-row">
+                <span class="k">${label}${now}</span>
+                <select data-param-select="${param}" data-sel-key="${selKey}" data-current="${cur ?? ''}"></select>
+                <button class="apply" data-action="set-param" data-param="${param}">Set</button>
+            </div>`;
+    }
+
+    batteryTypeRow(curLabel) {
+        const codeFor = { AGM: '0', Flooded: '1', User: '2', 'User-defined': '2' };
+        const curCode = codeFor[curLabel] ?? '';
+        const opts = [['0', 'AGM'], ['1', 'Flooded'], ['2', 'User-defined']]
+            .map(([code, label]) => `<option value="${code}" ${code === curCode ? 'selected' : ''}>${label}</option>`)
+            .join('');
+        return `
+            <div class="param-row">
+                <span class="k">Battery Type</span>
+                <select data-param-select="battery_type">${opts}</select>
+                <button class="apply" data-action="set-param" data-param="battery_type">Set</button>
+            </div>`;
     }
 
     needsConfig(component) {
@@ -379,14 +438,39 @@ class SolarFlowDashboard {
 
     closeModal() {
         this.currentModal = null;
+        this.setModalToast(null);
         document.getElementById('component-modal').classList.add('hidden');
+    }
+
+    /// Set (or clear, with text=null) the modal toast. Held on the instance so it survives the
+    /// frequent live re-renders; auto-clears after `autoClearMs` (0 = sticky until replaced).
+    setModalToast(cls, text = null, autoClearMs = 0) {
+        if (this._modalToastTimer) { clearTimeout(this._modalToastTimer); this._modalToastTimer = null; }
+        this.modalToast = (text == null) ? null : { cls, text };
+        const el = document.getElementById('modal-toast');
+        if (el) {
+            el.className = this.modalToast ? `toast ${cls}` : '';
+            el.textContent = this.modalToast ? text : '';
+        }
+        if (this.modalToast && autoClearMs > 0) {
+            this._modalToastTimer = setTimeout(() => this.setModalToast(null), autoClearMs);
+        }
     }
 
     rerenderCurrentModal() {
         const card = document.getElementById('component-modal-card');
         if (!card || !this.currentModal) return;
+        // Live readings arrive ~every second and trigger this. Don't rebuild while the user is
+        // editing a field in the sheet — it would discard their input and drop focus.
+        const active = document.activeElement;
+        if (active && card.contains(active) && /^(INPUT|SELECT|TEXTAREA)$/.test(active.tagName)) return;
         card.innerHTML = this.buildModalHTML(this.currentModal);
         this.attachModalHandlers();
+        // Re-apply the sticky toast destroyed by the innerHTML rebuild.
+        if (this.modalToast) {
+            const el = document.getElementById('modal-toast');
+            if (el) { el.className = `toast ${this.modalToast.cls}`; el.textContent = this.modalToast.text; }
+        }
     }
 
     buildModalHTML(component) {
@@ -437,6 +521,7 @@ class SolarFlowDashboard {
         if (component === 'load') {
             const l = m.load || {};
             const current = c.output_priority || '—';
+            const freq = Math.round(Number(c.ac_output_frequency) || 0);
             const opts = [
                 { key: 'SBU', name: 'SBU', desc: 'Solar → Battery → Grid' },
                 { key: 'SOL', name: 'SOL', desc: 'Solar → Grid → Battery' },
@@ -462,6 +547,13 @@ class SolarFlowDashboard {
                     <section><h3>Output Source Priority</h3>
                         <div class="text-white/60 text-xs mb-2">Where the load gets its power from. Current: <span class="text-white font-medium">${current}</span></div>
                         <div class="choice-grid">${choices}</div>
+                    </section>
+                    <section><h3>Output Frequency</h3>
+                        <div class="text-white/60 text-xs mb-2">AC output frequency. Match your appliances / region.</div>
+                        <div class="seg">
+                            <button data-action="set-param" data-param="output_frequency" data-value="50" class="${freq === 50 ? 'current' : ''}">50 Hz</button>
+                            <button data-action="set-param" data-param="output_frequency" data-value="60" class="${freq === 60 ? 'current' : ''}">60 Hz</button>
+                        </div>
                     </section>
                     ${this.buildPasswordFieldHTML()}
                     <div id="modal-toast"></div>
@@ -499,13 +591,19 @@ class SolarFlowDashboard {
                         <div class="text-white/60 text-xs mb-2">What's allowed to charge the battery. Current: <span class="text-white font-medium">${current}</span></div>
                         <div class="choice-grid">${choices}</div>
                     </section>
-                    <section><h3>Battery Info</h3>
-                        <div class="info-row"><span class="k">Type</span><span class="v">${c.battery_type ?? '—'}</span></div>
-                        <div class="info-row"><span class="k">Max Charging Current</span><span class="v">${c.max_charging_current ?? '—'} A</span></div>
-                        <div class="info-row"><span class="k">Max AC Charging Current</span><span class="v">${c.max_ac_charging_current ?? '—'} A</span></div>
-                        <div class="info-row"><span class="k">Under Voltage</span><span class="v">${c.battery_under_voltage ?? '—'} V</span></div>
-                        <div class="info-row"><span class="k">Bulk Charge</span><span class="v">${c.battery_bulk_charge_voltage ?? '—'} V</span></div>
-                        <div class="info-row"><span class="k">Float Charge</span><span class="v">${c.battery_float_charge_voltage ?? '—'} V</span></div>
+                    <section><h3>Battery Settings</h3>
+                        <div class="text-white/50 text-[11px] mb-2">
+                            Each change is written to the inverter and read back.
+                            Nominal system: <span class="text-white/70">${c.battery_nominal_voltage ?? '—'} V</span>
+                        </div>
+                        ${this.batteryTypeRow(c.battery_type)}
+                        ${this.currentRow('Max Charge Current', 'max_charge_current', 'max_charging_current', c.max_charging_current)}
+                        ${this.currentRow('Max AC Charge Current', 'max_ac_charge_current', 'max_ac_charging_current', c.max_ac_charging_current)}
+                        ${this.voltageRow('Cut-off Voltage', 'cutoff_voltage', c.battery_under_voltage)}
+                        ${this.voltageRow('Back to Grid (recharge)', 'back_to_grid_voltage', c.battery_recharge_voltage)}
+                        ${this.voltageRow('Back to Battery (re-discharge)', 'back_to_battery_voltage', c.battery_redischarge_voltage)}
+                        ${this.voltageRow('Bulk / Absorption Voltage', 'bulk_voltage', c.battery_bulk_charge_voltage)}
+                        ${this.voltageRow('Float Voltage', 'float_voltage', c.battery_float_charge_voltage)}
                     </section>
                     ${this.buildPasswordFieldHTML()}
                     <div id="modal-toast"></div>
@@ -553,10 +651,28 @@ class SolarFlowDashboard {
         card.querySelectorAll('[data-action]').forEach((btn) => {
             btn.addEventListener('click', () => this.handleConfigAction(btn));
         });
+
+        // Fill charge-current dropdowns from the inverter's selectable values, preselecting the
+        // current setting. Falls back to a single option (the current value) if the list isn't
+        // loaded yet — loadSelectableCurrents() will re-render the sheet once it arrives.
+        const sc = this.selectableCurrents || {};
+        card.querySelectorAll('select[data-param-select][data-sel-key]').forEach((sel) => {
+            const vals = sc[sel.dataset.selKey] || [];
+            const cur = sel.dataset.current;
+            if (!vals.length) {
+                sel.innerHTML = `<option value="${cur || ''}">${cur ? cur + ' A' : '—'}</option>`;
+                return;
+            }
+            sel.innerHTML = vals
+                .map((a) => `<option value="${a}" ${String(a) === String(cur) ? 'selected' : ''}>${a} A</option>`)
+                .join('');
+        });
     }
 
     async handleConfigAction(btn) {
         const action = btn.dataset.action;
+        if (action === 'set-param') return this.handleSetParam(btn);
+
         const mode = btn.dataset.mode;
         const endpoint = action === 'set-output-priority' ? '/set-output-priority'
                       : action === 'set-charger-priority' ? '/set-charger-priority'
@@ -565,8 +681,7 @@ class SolarFlowDashboard {
         const label = btn.querySelector('.name').textContent.replace(/✓?$/, '').trim();
         if (!confirm(`Apply change: ${label}?`)) return;
 
-        const toast = document.getElementById('modal-toast');
-        if (toast) { toast.className = 'toast info'; toast.textContent = 'Sending…'; }
+        this.setModalToast('info', 'Sending…');
 
         try {
             const res = await fetch(endpoint, {
@@ -576,13 +691,52 @@ class SolarFlowDashboard {
             });
             const data = await res.json();
             if (!res.ok || data.error || data.success === false) {
-                if (toast) { toast.className = 'toast err'; toast.textContent = `Failed: ${data.error || res.statusText}`; }
+                this.setModalToast('err', `Failed: ${data.error || res.statusText}`, 8000);
                 return;
             }
-            if (toast) { toast.className = 'toast ok'; toast.textContent = `Applied: ${data.applied?.label || mode}`; }
             if (data.config) this.renderConfig(data.config);
+            this.setModalToast('ok', `Applied: ${data.applied?.label || mode}`, 6000);
         } catch (err) {
-            if (toast) { toast.className = 'toast err'; toast.textContent = `Error: ${err.message}`; }
+            this.setModalToast('err', `Error: ${err.message}`, 8000);
+        }
+    }
+
+    async handleSetParam(btn) {
+        const param = btn.dataset.param;
+        // The value comes from the field in this control's row (input/select), or a button's own
+        // data-value (segmented controls like output frequency).
+        const row = btn.closest('.param-row') || btn.closest('.seg');
+        const field = row && row.querySelector('[data-param-input],[data-param-select]');
+        const value = field ? field.value : btn.dataset.value;
+
+        if (value === '' || value == null) {
+            this.setModalToast('err', 'Enter a value first.', 5000);
+            return;
+        }
+        const pretty = param.replace(/_/g, ' ');
+        if (!confirm(`Apply ${pretty} = ${value}?\nThis writes the setting to the inverter.`)) return;
+        this.setModalToast('info', 'Sending to inverter…');
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/inverter/set-param', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+                body: JSON.stringify({ param, value }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.error || data.success === false) {
+                this.setModalToast('err', `Failed: ${data.error || res.statusText}`, 8000);
+                return;
+            }
+            // Re-render with the read-back config first; the sticky toast is re-applied after.
+            if (data.config) this.renderConfig(data.config);
+            const applied = data.applied || {};
+            this.setModalToast('ok', `Applied: ${applied.label || pretty} → ${applied.value ?? value}`, 6000);
+        } catch (err) {
+            this.setModalToast('err', `Error: ${err.message}`, 8000);
+        } finally {
+            btn.disabled = false;
         }
     }
 

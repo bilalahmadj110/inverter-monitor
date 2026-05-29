@@ -19,7 +19,7 @@ def _config():
     return {
         'username': os.environ.get('INVERTER_ADMIN_USERNAME', 'admin').strip(),
         'password_hash': current_app.config.get('ADMIN_PASSWORD_HASH'),
-        'session_lifetime_minutes': int(os.environ.get('INVERTER_SESSION_MINUTES', '60')),
+        'session_lifetime_minutes': int(os.environ.get('INVERTER_SESSION_MINUTES', '1440')),
     }
 
 
@@ -118,7 +118,7 @@ def init_auth(app):
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SECURE=behind_proxy,  # true when fronted by Cloudflare (HTTPS)
         SESSION_COOKIE_SAMESITE='Lax',
-        PERMANENT_SESSION_LIFETIME=timedelta(minutes=int(os.environ.get('INVERTER_SESSION_MINUTES', '60'))),
+        PERMANENT_SESSION_LIFETIME=timedelta(minutes=int(os.environ.get('INVERTER_SESSION_MINUTES', '1440'))),
     )
     app.register_blueprint(auth_bp)
 

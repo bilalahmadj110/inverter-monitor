@@ -199,6 +199,24 @@
         .info-row:last-child { border-bottom: none; }
         .info-row .k { color: rgba(255,255,255,0.6); }
         .info-row .v { color: #fff; font-weight: 500; }
+
+        /* Editable parameter rows (battery / inverter settings) */
+        .param-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .param-row:last-child { border-bottom: none; }
+        .param-row .k { color: rgba(255,255,255,0.72); font-size: 0.84rem; flex: 1 1 auto; min-width: 0; }
+        .param-row .k .cur { display: block; color: rgba(255,255,255,0.4); font-size: 0.68rem; }
+        .param-row input, .param-row select { width: 6.2rem; flex: 0 0 auto; font-size: 0.85rem; padding: 0.35rem 0.5rem; }
+        .param-row .apply {
+            flex: 0 0 auto; padding: 0.35rem 0.7rem; border-radius: 0.45rem;
+            background: #2563eb; color: #fff; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+        .param-row .apply:hover { background: #1d4ed8; }
+        .param-row .apply:disabled { opacity: 0.5; cursor: wait; }
+        .seg { display: inline-flex; border: 1px solid rgba(255,255,255,0.2); border-radius: 0.45rem; overflow: hidden; }
+        .seg button { padding: 0.35rem 0.75rem; font-size: 0.82rem; color: #fff; background: transparent; cursor: pointer; }
+        .seg button + button { border-left: 1px solid rgba(255,255,255,0.2); }
+        .seg button.current { background: #2563eb; }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">

@@ -183,7 +183,10 @@ def get_inverter_config():
             'battery_type': parsed.get('battery_type', {}).get('value'),
             'max_charging_current': parsed.get('max_charging_current', {}).get('value'),
             'max_ac_charging_current': parsed.get('max_ac_charging_current', {}).get('value'),
+            'battery_nominal_voltage': parsed.get('battery_voltage', {}).get('value'),
             'battery_under_voltage': parsed.get('battery_under_voltage', {}).get('value'),
+            'battery_recharge_voltage': parsed.get('battery_recharge_voltage', {}).get('value'),
+            'battery_redischarge_voltage': parsed.get('battery_redischarge_voltage', {}).get('value'),
             'battery_bulk_charge_voltage': parsed.get('battery_bulk_charge_voltage', {}).get('value'),
             'battery_float_charge_voltage': parsed.get('battery_float_charge_voltage', {}).get('value'),
             'ac_output_voltage': parsed.get('ac_output_voltage', {}).get('value'),
@@ -222,6 +225,157 @@ def set_charger_priority(mode):
     cmd_code, label, _ = CHARGER_PRIORITY_COMMANDS[mode]
     out = _run_write_command(cmd_code, label)
     return {'mode': mode, 'label': label, 'command': cmd_code, 'response': out.strip()[:200]}
+
+
+# ---- Generic config-parameter writes (official Voltronic / PI30 command set) --------------
+#
+# Every setter below maps to a documented PI30 command and is validated before it touches the
+# bus. Validation here is a loose sanity guardrail (e.g. "this voltage is plausible for a 48V
+# system"); the inverter itself is the final authority and NAKs anything it doesn't accept,
+# which _run_write_command surfaces as an error. After a successful write the caller re-reads
+# QPIRI so the UI shows the value the inverter actually stored.
+
+BATTERY_TYPE_COMMANDS = {
+    '0': ('PBT00', 'AGM'),
+    '1': ('PBT01', 'Flooded'),
+    '2': ('PBT02', 'User-defined'),
+}
+
+OUTPUT_FREQUENCY_COMMANDS = {
+    '50': ('F50', '50 Hz'),
+    '60': ('F60', '60 Hz'),
+}
+
+# Selectable max-charge / max-utility-charge current lists are fixed per model, so we query them
+# once (QMCHGCR / QMUCHGCR) and cache the result.
+_selectable_currents_cache = None
+
+
+def _parse_selectable_currents(payload):
+    return [int(tok) for tok in (payload or '').split() if tok.strip().lstrip('-').isdigit()]
+
+
+def get_selectable_currents(force=False):
+    """Return {'max_charging_current': [...A], 'max_ac_charging_current': [...A]} — the discrete
+    current values this inverter accepts, queried from QMCHGCR / QMUCHGCR. Cached after the first
+    successful read since they never change for a given model."""
+    global _selectable_currents_cache
+    if _selectable_currents_cache is not None and not force:
+        return dict(_selectable_currents_cache)
+    result = {'max_charging_current': [], 'max_ac_charging_current': []}
+    try:
+        result['max_charging_current'] = _parse_selectable_currents(_query('QMCHGCR', retries=2))
+    except Exception as e:
+        logger.debug(f"QMCHGCR unavailable: {e}")
+    try:
+        result['max_ac_charging_current'] = _parse_selectable_currents(_query('QMUCHGCR', retries=2))
+    except Exception as e:
+        logger.debug(f"QMUCHGCR unavailable: {e}")
+    if result['max_charging_current'] or result['max_ac_charging_current']:
+        _selectable_currents_cache = dict(result)
+    return result
+
+
+def _fmt_voltage(v):
+    """PI30 voltage setpoints are NN.N, zero-padded to two integer digits (e.g. 44.0, 09.5)."""
+    return f"{float(v):04.1f}"
+
+
+def _set_battery_type(value, cfg):
+    key = str(value).strip()
+    if key not in BATTERY_TYPE_COMMANDS:
+        raise ValueError(f"Invalid battery type '{value}'. Options: {list(BATTERY_TYPE_COMMANDS)}")
+    cmd, label = BATTERY_TYPE_COMMANDS[key]
+    out = _run_write_command(cmd, f"Battery type {label}")
+    return {'param': 'battery_type', 'label': label, 'command': cmd, 'value': key,
+            'response': out.strip()[:200]}
+
+
+def _set_output_frequency(value, cfg):
+    key = str(value).strip().replace('Hz', '').strip()
+    if key not in OUTPUT_FREQUENCY_COMMANDS:
+        raise ValueError(f"Invalid output frequency '{value}'. Options: {list(OUTPUT_FREQUENCY_COMMANDS)}")
+    cmd, label = OUTPUT_FREQUENCY_COMMANDS[key]
+    out = _run_write_command(cmd, f"Output frequency {label}")
+    return {'param': 'output_frequency', 'label': label, 'command': cmd, 'value': key,
+            'response': out.strip()[:200]}
+
+
+def _voltage_setter(param, prefix, label, allow_zero=False):
+    def setter(value, cfg):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{label} must be a number")
+        nominal = float((cfg or {}).get('battery_nominal_voltage') or 0) or 48.0
+        if not (allow_zero and v == 0):
+            lo, hi = nominal * 0.5, nominal * 1.45
+            if not (lo <= v <= hi):
+                raise ValueError(
+                    f"{label} {v}V is outside the plausible {lo:.1f}–{hi:.1f}V range for a "
+                    f"{nominal:.0f}V battery system")
+        cmd = f"{prefix}{_fmt_voltage(v)}"
+        out = _run_write_command(cmd, f"{label} {v}V")
+        return {'param': param, 'label': label, 'command': cmd, 'value': _fmt_voltage(v),
+                'response': out.strip()[:200]}
+    return setter
+
+
+def _current_setter(param, single_prefix, parallel_prefix, selectable_key, label):
+    def setter(value, cfg):
+        try:
+            amps = int(round(float(value)))
+        except (TypeError, ValueError):
+            raise ValueError(f"{label} must be a whole number of amps")
+        # The inverter advertises exactly which currents it accepts (QMCHGCR / QMUCHGCR). Only
+        # write a value that's on that list — never guess one the hardware didn't offer. If we
+        # couldn't read the list, refuse rather than risk a malformed/mis-addressed command.
+        selectable = get_selectable_currents().get(selectable_key) or []
+        if not selectable:
+            raise ValueError(
+                f"Couldn't read this inverter's selectable {label.lower()} values "
+                f"(QMCHGCR/QMUCHGCR) — refusing to guess a charge-current command.")
+        if amps not in selectable:
+            raise ValueError(f"{label} {amps}A isn't selectable on this inverter. Allowed: {selectable}")
+        # Wire format: in the 3-digit MCHGC/MUCHGC field the LEADING digit doubles as a parallel
+        # unit address on multi-unit firmware (e.g. MCHGC160 = unit 1 @ 60A). For amps < 100 the
+        # zero-padded value (e.g. "060") has a leading 0, so it reads unambiguously as
+        # "unit 0 / 60A" under both the single-unit and parallel interpretations. For amps >= 100
+        # the leading digit is non-zero and would be mis-read as a unit address, so we must use the
+        # explicit 4-digit parallel command MNCHGC<unit><nnn> (unit 0 = master).
+        if amps < 100:
+            cmd = f"{single_prefix}{amps:03d}"
+        elif parallel_prefix:
+            cmd = f"{parallel_prefix}0{amps:03d}"
+        else:
+            raise ValueError(f"{label} {amps}A is not supported by this control")
+        out = _run_write_command(cmd, f"{label} {amps}A")
+        return {'param': param, 'label': label, 'command': cmd, 'value': amps,
+                'response': out.strip()[:200]}
+    return setter
+
+
+CONFIG_PARAM_SETTERS = {
+    'battery_type': _set_battery_type,
+    'output_frequency': _set_output_frequency,
+    'cutoff_voltage':           _voltage_setter('cutoff_voltage', 'PSDV', 'Battery cut-off voltage'),
+    'back_to_grid_voltage':     _voltage_setter('back_to_grid_voltage', 'PBCV', 'Back-to-grid (recharge) voltage'),
+    'back_to_battery_voltage':  _voltage_setter('back_to_battery_voltage', 'PBDV', 'Back-to-battery (re-discharge) voltage', allow_zero=True),
+    'bulk_voltage':             _voltage_setter('bulk_voltage', 'PCVV', 'Bulk / absorption charge voltage'),
+    'float_voltage':            _voltage_setter('float_voltage', 'PBFT', 'Float charge voltage'),
+    'max_charge_current':       _current_setter('max_charge_current', 'MCHGC', 'MNCHGC', 'max_charging_current', 'Max charge current'),
+    'max_ac_charge_current':    _current_setter('max_ac_charge_current', 'MUCHGC', None, 'max_ac_charging_current', 'Max AC (utility) charge current'),
+}
+
+
+def set_config_param(param, value, cfg=None):
+    """Validate and write a single inverter config parameter. `cfg` is the latest QPIRI config
+    (used for range validation) — pass the cached one to avoid an extra bus read."""
+    param = (param or '').strip()
+    setter = CONFIG_PARAM_SETTERS.get(param)
+    if setter is None:
+        raise ValueError(f"Unknown parameter '{param}'. Known: {list(CONFIG_PARAM_SETTERS)}")
+    return setter(value, cfg or {})
 
 
 def get_warning_status():

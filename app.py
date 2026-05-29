@@ -15,6 +15,7 @@ from continuous_reader import ContinuousReader
 from inverter_status import (
     set_output_priority, set_charger_priority,
     OUTPUT_PRIORITY_COMMANDS, CHARGER_PRIORITY_COMMANDS,
+    set_config_param, get_selectable_currents,
 )
 from auth import init_auth, login_required, is_logged_in, audit
 
@@ -629,6 +630,37 @@ def _apply_config_change(setter, label_key):
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.error(f"{label_key} change failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/inverter/selectable-currents')
+@login_required
+def inverter_selectable_currents():
+    """Discrete max charge / max AC-charge current values this inverter accepts (QMCHGCR/QMUCHGCR)."""
+    return jsonify(get_selectable_currents())
+
+
+@app.route('/inverter/set-param', methods=['POST'])
+@login_required
+@limiter.limit('10 per minute')
+def inverter_set_param():
+    """Generic, validated write of a single inverter config parameter (battery type, charge/AC
+    currents, cut-off / recharge / re-discharge / bulk / float voltages, output frequency).
+    Body: {"param": "<key>", "value": <value>}. Re-reads QPIRI and returns fresh config."""
+    body = request.get_json(silent=True) or {}
+    param = (body.get('param') or '').strip()
+    value = body.get('value')
+    try:
+        before = continuous_reader.get_config()
+        result = set_config_param(param, value, cfg=before)
+        audit('set_param', param=param, value=value, command=result.get('command'))
+        time.sleep(1.5)
+        fresh = continuous_reader.refresh_config()
+        return jsonify({'success': True, 'applied': result, 'config': fresh})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"set-param '{param}' failed: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
