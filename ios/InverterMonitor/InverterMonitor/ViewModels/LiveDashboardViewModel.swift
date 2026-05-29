@@ -45,6 +45,12 @@ final class LiveDashboardViewModel: ObservableObject {
     @Published private(set) var isRefreshingExtras = false
     @Published private(set) var recentReadings: RecentReadings = .empty
     @Published private(set) var isLoadingRecent = false
+    /// Rolling buffer of per-poll live ticks, appended on every successful
+    /// `/status` fetch. The chart merges these onto the tail of the server-side
+    /// bucketed `recentReadings` so the line slides forward at the 600ms poll
+    /// cadence, matching the way the web dashboard appends `inverter_update`
+    /// events to its chart.
+    @Published private(set) var liveTail: [LiveTick] = []
     @Published var liveRange: LiveRange = .thirtyMinutes {
         didSet { if liveRange != oldValue { Task { await loadRecentReadings() } } }
     }
@@ -123,6 +129,7 @@ final class LiveDashboardViewModel: ObservableObject {
         lastUpdate = nil
         connection = .connecting
         recentReadings = .empty
+        liveTail = []
         priorityFlash = nil
         priorityError = nil
         dismissedWarnings = false
@@ -139,9 +146,14 @@ final class LiveDashboardViewModel: ObservableObject {
     // MARK: - Polling loops ----------------------------------------------------
 
     private func statusLoop() async {
+        // Poll at ~600ms — matches the inverter reader's natural cadence on the
+        // Pi. `/status` just returns the latest cached reading from memory so
+        // this doesn't hammer the USB bus. Previously we polled at 3s, which
+        // made iOS feel laggier than the web dashboard (which gets push updates
+        // over socket.io the moment a reading lands).
         while !Task.isCancelled && !isStopped {
             await fetchStatus()
-            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3s matches the backend reader cadence.
+            try? await Task.sleep(nanoseconds: 600_000_000)
         }
     }
 
@@ -172,6 +184,9 @@ final class LiveDashboardViewModel: ObservableObject {
             self.status = next
             self.lastUpdate = Date()
             self.connection = next.success ? .connected : .offline("Inverter Offline")
+            if next.success {
+                appendLiveTick(from: next)
+            }
             announceNewFaults(in: next.system.warnings)
             return true
         } catch APIError.notAuthenticated {
@@ -229,8 +244,40 @@ final class LiveDashboardViewModel: ObservableObject {
         do {
             let data = try await inverter.recentReadings(minutes: liveRange.rawValue)
             self.recentReadings = data
+            // Drop any live tail points the server buckets have now absorbed —
+            // the server response is authoritative for anything up to `now`.
+            trimLiveTail()
         } catch {
             // Keep last good data.
+        }
+    }
+
+    /// Appends one point from the latest `/status` poll to the chart tail so
+    /// the line advances every 600 ms even when the server-side `/recent-
+    /// readings` poll is on a slower cadence. Also keeps the buffer bounded
+    /// to the currently-selected live range.
+    private func appendLiveTick(from status: InverterStatus) {
+        let tick = LiveTick(
+            timestamp: Date().timeIntervalSince1970,
+            solar: status.metrics.solar.power,
+            grid: status.metrics.grid.power,
+            load: status.metrics.load.effectivePower,
+            battery: status.metrics.battery.power,
+            batteryPercentage: status.metrics.battery.percentage,
+            gridVoltage: status.metrics.grid.voltage
+        )
+        liveTail.append(tick)
+        trimLiveTail()
+    }
+
+    private func trimLiveTail() {
+        let cutoff = Date().timeIntervalSince1970 - Double(liveRange.rawValue * 60)
+        // Also drop anything the server's last bucket already covers so the
+        // merged chart doesn't double-up a bucket + live-tick at the same x.
+        let serverTail = recentReadings.points.last?.timestamp ?? 0
+        let lowerBound = max(cutoff, serverTail)
+        if liveTail.first?.timestamp ?? .greatestFiniteMagnitude < lowerBound {
+            liveTail.removeAll { $0.timestamp <= lowerBound }
         }
     }
 
@@ -381,6 +428,24 @@ final class LiveDashboardViewModel: ObservableObject {
         }
         return ""
     }
+}
+
+/// One point-in-time sample captured straight from a `/status` poll, used to
+/// extend the live chart tail at the 600ms poll cadence. The server-side
+/// bucketed `/recent-readings` response remains authoritative for anything
+/// older than the last bucket boundary; live ticks only fill in the gap
+/// between that boundary and "now".
+struct LiveTick: Equatable, Identifiable {
+    let timestamp: TimeInterval
+    let solar: Double
+    let grid: Double
+    let load: Double
+    let battery: Double
+    let batteryPercentage: Double
+    let gridVoltage: Double
+
+    var id: TimeInterval { timestamp }
+    var date: Date { Date(timeIntervalSince1970: timestamp) }
 }
 
 struct ModePillStyle {

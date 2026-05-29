@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E8E49D0734267E37B935C881"
+               BlueprintIdentifier = "44B33402ABBADFFF41E4F618"
                BuildableName = "InverterMonitor.app"
                BlueprintName = "InverterMonitor"
                ReferencedContainer = "container:InverterMonitor.xcodeproj">
@@ -30,7 +30,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "E8E49D0734267E37B935C881"
+            BlueprintIdentifier = "44B33402ABBADFFF41E4F618"
             BuildableName = "InverterMonitor.app"
             BlueprintName = "InverterMonitor"
             ReferencedContainer = "container:InverterMonitor.xcodeproj">
@@ -53,7 +53,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "E8E49D0734267E37B935C881"
+            BlueprintIdentifier = "44B33402ABBADFFF41E4F618"
             BuildableName = "InverterMonitor.app"
             BlueprintName = "InverterMonitor"
             ReferencedContainer = "container:InverterMonitor.xcodeproj">
@@ -70,7 +70,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "E8E49D0734267E37B935C881"
+            BlueprintIdentifier = "44B33402ABBADFFF41E4F618"
             BuildableName = "InverterMonitor.app"
             BlueprintName = "InverterMonitor"
             ReferencedContainer = "container:InverterMonitor.xcodeproj">

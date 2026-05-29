@@ -51,7 +51,25 @@ struct FlowDiagramView: View {
             let topY = size.height * 0.19
             let botY = size.height * 0.81
             ZStack {
+                // Lines + particles get their own Metal layer so the 60 FPS dash
+                // scroll + sliding-dot animations don't fight the parent
+                // ScrollView's layout loop. Kept INSIDE drawingGroup because
+                // those are shape/path animations that benefit from rasterization.
                 ConnectionsLayer(size: size, status: status)
+                    .compositingGroup()
+                    .drawingGroup(opaque: false)
+
+                // Labels + icons live OUTSIDE drawingGroup so SwiftUI's
+                // `.contentTransition(.numericText)` on the corner-node value
+                // strings and the in-flow W / V / Hz labels actually animates.
+                // drawingGroup rasterizes its subtree to a bitmap, which
+                // bypasses per-text morph transitions.
+                LinkLabelsLayer(size: size, status: status)
+                // Sliding dots also live outside drawingGroup — their
+                // `withAnimation(.linear.repeatForever)` doesn't survive the
+                // Metal rasterization and was leaving them frozen at their
+                // start positions.
+                FlowParticlesLayer(size: size, status: status)
 
                 cornerNode(.grid,    center: CGPoint(x: margin, y: topY), alignLeading: false)
                 cornerNode(.load,    center: CGPoint(x: size.width - margin, y: topY), alignLeading: true)
@@ -60,12 +78,6 @@ struct FlowDiagramView: View {
 
                 centerNode(size: size)
             }
-            // Render the whole diagram off-screen into a single Metal layer. This
-            // isolates the continuous flow-line + particle animations from the parent
-            // ScrollView's layout loop — otherwise the 60 FPS animation redraws fight
-            // with rubber-band overscroll and the entire screen visibly jitters.
-            .compositingGroup()
-            .drawingGroup(opaque: false)
         }
         .frame(height: 320)
         .padding(.vertical, 6)
@@ -134,14 +146,35 @@ struct FlowDiagramView: View {
     }
 
     private func valueStack(values: (primary: String, secondary: String), alignment: HorizontalAlignment) -> some View {
+        // Both lines use `.numericText` content transitions so voltage / watts /
+        // percentage / frequency morph smoothly at the 600ms poll cadence,
+        // matching the Today tile behavior. The `value:` hint is parsed out of
+        // the string so the digit roll knows which direction to go.
         VStack(alignment: alignment, spacing: 2) {
             Text(values.primary)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Self.firstNumber(in: values.primary)))
+                .animation(.easeOut(duration: 0.35), value: values.primary)
             Text(values.secondary)
                 .font(.system(size: 11))
                 .foregroundStyle(Palette.subtleText)
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Self.firstNumber(in: values.secondary)))
+                .animation(.easeOut(duration: 0.35), value: values.secondary)
         }
+    }
+
+    /// Scrapes the first signed decimal out of a formatted string — used as the
+    /// direction hint for `.numericText` so digit rolls go the right way.
+    /// Values like "231 V" / "27.3 V" / "12%" / "50.3 Hz" all parse cleanly.
+    fileprivate static func firstNumber(in s: String) -> Double {
+        let scanner = Scanner(string: s)
+        scanner.charactersToBeSkipped = CharacterSet(charactersIn: " ")
+            .union(.letters)
+            .union(.punctuationCharacters.subtracting(CharacterSet(charactersIn: "-.")))
+        return scanner.scanDouble() ?? 0
     }
 
     private func centerNode(size: CGSize) -> some View {
@@ -237,37 +270,24 @@ private struct ConnectionsLayer: View {
             link(from: inwardGrid, to: CGPoint(x: centerX - 36, y: centerTopY),
                  color: Palette.grid,
                  active: status.metrics.grid.inUse,
-                 label: gridLabel,
-                 labelAnchor: midpoint(inwardGrid, CGPoint(x: centerX - 36, y: centerTopY)),
                  reversed: false)
             link(from: CGPoint(x: centerX + 36, y: centerTopY), to: inwardLoad,
                  color: Palette.load,
                  active: status.metrics.load.effectivePower > 5,
-                 label: loadLabel,
-                 labelAnchor: midpoint(CGPoint(x: centerX + 36, y: centerTopY), inwardLoad),
                  reversed: false)
             link(from: inwardSolar, to: CGPoint(x: centerX - 36, y: centerBotY),
                  color: Palette.solar,
                  active: status.metrics.solar.power > 5,
-                 label: solarLabel,
-                 labelAnchor: midpoint(inwardSolar, CGPoint(x: centerX - 36, y: centerBotY)),
                  reversed: false)
             link(from: CGPoint(x: centerX + 36, y: centerBotY), to: inwardBattery,
                  color: Palette.battery,
                  active: status.metrics.battery.direction != .idle,
-                 label: batteryLabel,
-                 labelAnchor: midpoint(CGPoint(x: centerX + 36, y: centerBotY), inwardBattery),
                  reversed: status.metrics.battery.direction == .charging)
         }
     }
 
-    private func midpoint(_ a: CGPoint, _ b: CGPoint) -> CGPoint {
-        CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-    }
-
     @ViewBuilder
-    private func link(from start: CGPoint, to end: CGPoint, color: Color, active: Bool,
-                      label: String, labelAnchor: CGPoint, reversed: Bool) -> some View {
+    private func link(from start: CGPoint, to end: CGPoint, color: Color, active: Bool, reversed: Bool) -> some View {
         AnimatedDashLine(
             start: start,
             end: end,
@@ -275,20 +295,114 @@ private struct ConnectionsLayer: View {
             active: active,
             reversed: reversed
         )
+        // FlowParticle + labels used to live here, but they were getting
+        // rasterized by the enclosing drawingGroup and their onAppear-driven
+        // animations never fired. Both are now drawn outside drawingGroup:
+        // particles in FlowParticlesLayer, labels in LinkLabelsLayer.
+    }
+}
 
-        if active {
-            FlowParticle(start: start, end: end, color: color, reversed: reversed)
-        }
+/// Sliding glow-dots rendered on top of the dashed flow lines. Lives OUTSIDE
+/// the drawingGroup so the `.onAppear` → `withAnimation(.linear…)` driving
+/// `FlowParticle.progress` actually runs — drawingGroup rasterizes the subtree
+/// and its animation was effectively freezing the dots in place at 0.
+private struct FlowParticlesLayer: View {
+    let size: CGSize
+    let status: InverterStatus
 
-        if active && !label.isEmpty {
-            Text(label)
-                .font(.caption2.bold())
-                .foregroundStyle(color)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Color.black.opacity(0.45), in: Capsule())
-                .position(labelAnchor)
+    var body: some View {
+        let margin: CGFloat = 86
+        let topY = size.height * 0.19
+        let botY = size.height * 0.81
+        let centerX = size.width * 0.5
+        let centerTopY = size.height * 0.38
+        let centerBotY = size.height * 0.62
+        let inwardGrid    = CGPoint(x: margin + 28, y: topY + 10)
+        let inwardLoad    = CGPoint(x: size.width - margin - 28, y: topY + 10)
+        let inwardSolar   = CGPoint(x: margin + 28, y: botY - 10)
+        let inwardBattery = CGPoint(x: size.width - margin - 28, y: botY - 10)
+
+        return ZStack {
+            if status.metrics.grid.inUse {
+                FlowParticle(start: inwardGrid, end: CGPoint(x: centerX - 36, y: centerTopY),
+                             color: Palette.grid, reversed: false)
+            }
+            if status.metrics.load.effectivePower > 5 {
+                FlowParticle(start: CGPoint(x: centerX + 36, y: centerTopY), end: inwardLoad,
+                             color: Palette.load, reversed: false)
+            }
+            if status.metrics.solar.power > 5 {
+                FlowParticle(start: inwardSolar, end: CGPoint(x: centerX - 36, y: centerBotY),
+                             color: Palette.solar, reversed: false)
+            }
+            if status.metrics.battery.direction != .idle {
+                FlowParticle(start: CGPoint(x: centerX + 36, y: centerBotY), end: inwardBattery,
+                             color: Palette.battery,
+                             reversed: status.metrics.battery.direction == .charging)
+            }
         }
+        // `.allowsHitTesting(false)` so the moving dots don't swallow taps
+        // meant for the corner nodes behind them.
+        .allowsHitTesting(false)
+    }
+}
+
+/// Same connection endpoints as ConnectionsLayer but renders *only* the in-flow
+/// text labels ("231 W", "Charging 480 W", …). Lives outside the drawingGroup
+/// so each label can morph via `.contentTransition(.numericText)` at the
+/// 600 ms poll cadence — otherwise the rasterized Metal layer eats the
+/// animation and the user sees the numbers snap.
+private struct LinkLabelsLayer: View {
+    let size: CGSize
+    let status: InverterStatus
+
+    var body: some View {
+        let margin: CGFloat = 86
+        let topY = size.height * 0.19
+        let botY = size.height * 0.81
+        let centerX = size.width * 0.5
+        let centerTopY = size.height * 0.38
+        let centerBotY = size.height * 0.62
+        let inwardGrid    = CGPoint(x: margin + 28, y: topY + 10)
+        let inwardLoad    = CGPoint(x: size.width - margin - 28, y: topY + 10)
+        let inwardSolar   = CGPoint(x: margin + 28, y: botY - 10)
+        let inwardBattery = CGPoint(x: size.width - margin - 28, y: botY - 10)
+
+        return ZStack {
+            if status.metrics.grid.inUse {
+                flowLabel(gridLabel, color: Palette.grid,
+                          at: midpoint(inwardGrid, CGPoint(x: centerX - 36, y: centerTopY)))
+            }
+            if status.metrics.load.effectivePower > 5, !loadLabel.isEmpty {
+                flowLabel(loadLabel, color: Palette.load,
+                          at: midpoint(CGPoint(x: centerX + 36, y: centerTopY), inwardLoad))
+            }
+            if status.metrics.solar.power > 5, !solarLabel.isEmpty {
+                flowLabel(solarLabel, color: Palette.solar,
+                          at: midpoint(inwardSolar, CGPoint(x: centerX - 36, y: centerBotY)))
+            }
+            if status.metrics.battery.direction != .idle {
+                flowLabel(batteryLabel, color: Palette.battery,
+                          at: midpoint(CGPoint(x: centerX + 36, y: centerBotY), inwardBattery))
+            }
+        }
+    }
+
+    private func flowLabel(_ text: String, color: Color, at point: CGPoint) -> some View {
+        Text(text)
+            .font(.caption2.bold())
+            .foregroundStyle(color)
+            .monospacedDigit()
+            .contentTransition(.numericText(value: FlowDiagramView.firstNumber(in: text)))
+            .animation(.easeOut(duration: 0.35), value: text)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.black.opacity(0.45), in: Capsule())
+            .position(point)
+    }
+
+    private func midpoint(_ a: CGPoint, _ b: CGPoint) -> CGPoint {
+        CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
     }
 
     private var gridLabel: String {

@@ -31,7 +31,7 @@ app_target.build_configurations.each do |config|
   # Signing is REQUIRED for device installs; we pass DEVELOPMENT_TEAM on the CLI when building.
   config.build_settings['CODE_SIGNING_REQUIRED'] = 'YES'
   config.build_settings['CODE_SIGNING_ALLOWED'] = 'YES'
-  config.build_settings['DEVELOPMENT_TEAM'] = '6RWWV9NFH8'
+  config.build_settings['DEVELOPMENT_TEAM'] = 'QBJ2H95LXT'
   config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Development'
   config.build_settings['ENABLE_PREVIEWS'] = 'YES'
   config.build_settings['GENERATE_INFOPLIST_FILE'] = 'NO'

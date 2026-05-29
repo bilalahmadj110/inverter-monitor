@@ -110,17 +110,19 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("About") {
+                Section {
                     LabeledContent("Version", value: "1.0 · build 1")
                     LabeledContent("Deployment target", value: "iOS 17")
-                    Link(destination: URL(string: "https://github.com/anthropics/claude-code")!) {
-                        HStack {
-                            Label("Claude Code", systemImage: "terminal")
-                            Spacer()
-                            Image(systemName: "arrow.up.forward.square")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                } header: {
+                    Text("About")
+                } footer: {
+                    // Small, dim attribution under the About block — reads like
+                    // the native "Copyright" footer Apple's apps use.
+                    Text("Developed by Bilal Ahmad")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 6)
                 }
             }
             .navigationTitle("Settings")

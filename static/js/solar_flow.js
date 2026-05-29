@@ -36,9 +36,15 @@ class SolarFlowDashboard {
         this.socket.on('connect', () => {
             this.isConnected = true;
             this.updateConnectionStatus('Connected');
+            // After a dropped socket, tell the live chart to reload so it can't stay stale.
+            // (Skipped on the very first connect — there's nothing to reconcile yet.)
+            if (this._hadDisconnect) {
+                window.dispatchEvent(new CustomEvent('inverter_reconnect'));
+            }
         });
         this.socket.on('disconnect', () => {
             this.isConnected = false;
+            this._hadDisconnect = true;
             this.updateConnectionStatus('Disconnected');
             this.setAllComponentsInactive();
         });
@@ -590,6 +596,10 @@ class SolarFlowDashboard {
         this.updateElement('today-discharge', (s.battery_discharge_kwh || 0).toFixed(2));
         this.updateElement('today-selfsuff', Math.round((s.self_sufficiency || 0) * 100));
         this.updateElement('today-solarfrac', Math.round((s.solar_fraction || 0) * 100));
+        // Instantaneous daily peaks (true *_max from the backend, not averaged buckets).
+        this.updateElement('today-solar-peak', Math.round(s.solar_peak_w || 0));
+        this.updateElement('today-grid-peak', Math.round(s.grid_peak_w || 0));
+        this.updateElement('today-load-peak', Math.round(s.load_peak_w || 0));
         if (s.temperature_max != null) {
             this.updateElement('temp-max', Math.round(s.temperature_max));
         }

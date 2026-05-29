@@ -5,7 +5,7 @@ struct MainTabView: View {
     @EnvironmentObject var reports: ReportsViewModel
     @Environment(\.scenePhase) private var scenePhase
 
-    enum TabSelection: Hashable { case live, reports, settings }
+    enum TabSelection: Hashable { case live, reports, savings, settings }
     @State private var selection: TabSelection = .live
 
     var body: some View {
@@ -16,6 +16,9 @@ struct MainTabView: View {
             ReportsView()
                 .tabItem { Label("Reports", systemImage: "chart.bar.xaxis") }
                 .tag(TabSelection.reports)
+            SavingsView()
+                .tabItem { Label("Savings", systemImage: "indianrupeesign.circle.fill") }
+                .tag(TabSelection.savings)
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 .tag(TabSelection.settings)

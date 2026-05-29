@@ -7,14 +7,12 @@ struct ReportsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Tab", selection: $tab) {
-                    ForEach(ReportsViewModel.Tab.allCases) { tab in
-                        Text(tab.title).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
+                // Segmented Picker wraps labels when there are many tabs on narrow
+                // screens. A horizontal ScrollView with chip buttons keeps every
+                // tab on a single line and matches the web nav's pill style.
+                tabBar
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
 
                 ScrollView {
                     VStack(spacing: 20) {
@@ -24,6 +22,7 @@ struct ReportsView: View {
                             case .month: MonthReportView()
                             case .year: YearReportView()
                             case .outages: OutagesReportView()
+                            case .readerOutages: ReaderOutagesReportView()
                             case .raw: RawReadingsView()
                             }
                         }
@@ -48,12 +47,41 @@ struct ReportsView: View {
         }
     }
 
+    private var tabBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(ReportsViewModel.Tab.allCases) { candidate in
+                    Button {
+                        tab = candidate
+                    } label: {
+                        Text(candidate.title)
+                            .font(.footnote.weight(.semibold))
+                            .lineLimit(1)
+                            .fixedSize()
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .foregroundStyle(tab == candidate ? .white : Palette.mutedText)
+                            .background(
+                                tab == candidate ? Color.blue : Color.white.opacity(0.06),
+                                in: Capsule()
+                            )
+                            .overlay(Capsule().strokeBorder(Palette.cardBorder))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .scrollClipDisabled()
+    }
+
     private func loadTab() async {
         switch tab {
         case .day: await reports.loadDay()
         case .month: await reports.loadMonth()
         case .year: await reports.loadYear()
         case .outages: await reports.loadOutages()
+        case .readerOutages: await reports.loadReaderOutages()
         case .raw: await reports.loadRaw()
         }
     }

@@ -291,13 +291,15 @@ class InverterDashboard {
                 <td class="${this.getStatusClass(row.grid_voltage, 'grid')}">${row.grid_voltage}</td>
                 <td class="${this.getStatusClass(row.battery_percentage, 'battery')}">${row.battery_percentage}%</td>
                 <td class="${this.getStatusClass(row.load_power, 'load')}">${row.load_power}</td>
-                <td class="${this.getStatusClass(row.temperature, 'temp')}">${row.temperature}</td>
+                <td class="${this.getStatusClass(row.temperature, 'temp')}">${row.temperature == null ? '—' : row.temperature}</td>
                 <td>${row.duration_ms}ms</td>
             </tr>
         `).join('');
     }
 
     getStatusClass(value, type) {
+        // No value (e.g. temperature has no per-reading column) → no status colour.
+        if (value == null) return '';
         switch (type) {
             case 'solar':
                 return value > 100 ? 'status-good' : value > 0 ? 'status-warning' : 'status-error';

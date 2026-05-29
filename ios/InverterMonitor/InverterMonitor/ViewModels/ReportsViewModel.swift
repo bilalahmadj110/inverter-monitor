@@ -4,14 +4,15 @@ import Combine
 @MainActor
 final class ReportsViewModel: ObservableObject {
     enum Tab: String, CaseIterable, Identifiable {
-        case day, month, year, outages, raw
+        case day, month, year, outages, readerOutages, raw
         var id: String { rawValue }
         var title: String {
             switch self {
             case .day: return "Day"
             case .month: return "Month"
             case .year: return "Year"
-            case .outages: return "Outages"
+            case .outages: return "Grid Outages"
+            case .readerOutages: return "Reader Outages"
             case .raw: return "Raw"
             }
         }
@@ -43,17 +44,28 @@ final class ReportsViewModel: ObservableObject {
     @Published private(set) var monthlyTotals: [MonthlyTotal] = []
     @Published private(set) var yearPhase: LoadPhase = .idle
 
-    // Outages
+    // Outages (grid-voltage outages from /outages)
     @Published var outagesFrom: Date = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
     @Published var outagesTo: Date = Date()
     @Published private(set) var outages: OutagesResponse = .empty
     @Published private(set) var outagesPhase: LoadPhase = .idle
+
+    // Reader Outages (data gaps from /data-gaps)
+    @Published var readerOutagesFrom: Date = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
+    @Published var readerOutagesTo: Date = Date()
+    @Published var readerOutageThreshold: Int = 60
+    @Published private(set) var readerOutages: DataGapsResponse = .empty
+    @Published private(set) var readerOutagesPhase: LoadPhase = .idle
 
     // Raw
     @Published var rawPage: Int = 1
     @Published var rawPageSize: Int = 25
     @Published private(set) var rawReadings: RawReadingsPage = .empty
     @Published private(set) var rawPhase: LoadPhase = .idle
+
+    // Savings (mirrors the web /savings page)
+    @Published private(set) var savings: CostSavingsPayload = .empty
+    @Published private(set) var savingsPhase: LoadPhase = .idle
 
     // Cross-tab: exports
     @Published var exportProgress: String?
@@ -184,6 +196,42 @@ final class ReportsViewModel: ObservableObject {
             outagesFrom = start
         }
         await loadOutages()
+    }
+
+    // MARK: - Reader outages --------------------------------------------------
+
+    func loadReaderOutages() async {
+        readerOutagesPhase = .loading
+        do {
+            readerOutages = try await inverter.dataGaps(
+                from: Self.isoDate(readerOutagesFrom),
+                to: Self.isoDate(readerOutagesTo),
+                thresholdSeconds: readerOutageThreshold
+            )
+            readerOutagesPhase = readerOutages.gaps.isEmpty ? .empty : .loaded
+        } catch {
+            readerOutagesPhase = .error(handleLoadError(error))
+        }
+    }
+
+    func applyReaderOutagePreset(days: Int) async {
+        readerOutagesTo = Date()
+        if let start = Calendar.current.date(byAdding: .day, value: -(days - 1), to: Date()) {
+            readerOutagesFrom = start
+        }
+        await loadReaderOutages()
+    }
+
+    // MARK: - Savings ---------------------------------------------------------
+
+    func loadSavings() async {
+        savingsPhase = .loading
+        do {
+            savings = try await inverter.savings()
+            savingsPhase = .loaded
+        } catch {
+            savingsPhase = .error(handleLoadError(error))
+        }
     }
 
     // MARK: - Raw -------------------------------------------------------------

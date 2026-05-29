@@ -49,10 +49,29 @@ final class InverterService {
         try await api.getJSON("/outages", query: ["from": from, "to": to], as: OutagesResponse.self)
     }
 
+    /// `/data-gaps` — reader outages (periods where the Pi-side reader wasn't
+    /// producing data). Matches the web's "Reader Outages" tab.
+    func dataGaps(from: String?, to: String?, thresholdSeconds: Int = 60) async throws -> DataGapsResponse {
+        try await api.getJSON(
+            "/data-gaps",
+            query: ["from": from, "to": to, "threshold": String(thresholdSeconds)],
+            as: DataGapsResponse.self
+        )
+    }
+
     func rawReadings(page: Int, pageSize: Int) async throws -> RawReadingsPage {
         try await api.getJSON("/raw-data",
                               query: ["page": String(page), "page_size": String(pageSize)],
                               as: RawReadingsPage.self)
+    }
+
+    // MARK: - Cost savings ----------------------------------------------------
+
+    /// Same one-shot payload the web's Savings page uses (today + month + lifetime
+    /// + payback + slab projection). The iOS Reports > Savings tab only surfaces
+    /// the headline KPIs; the full editor stays on the web UI.
+    func savings() async throws -> CostSavingsPayload {
+        try await api.getJSON("/savings/data", as: CostSavingsPayload.self)
     }
 
     // MARK: - Config ----------------------------------------------------------

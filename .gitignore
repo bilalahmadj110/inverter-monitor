@@ -81,3 +81,4 @@ Pods/
 *.xcworkspace/xcuserdata/
 .xcode.env.local
 
+cloudflared-url-notifier.env

@@ -26,9 +26,9 @@ struct PowerCardsGrid: View {
             icon: "sun.max.fill"
         ) {
             HStack {
-                Text(String(format: "%.1f V", metrics.solar.voltage))
+                AnimatedMetric(text: String(format: "%.1f V", metrics.solar.voltage))
                 Spacer()
-                Text(String(format: "%.2f A", metrics.solar.current))
+                AnimatedMetric(text: String(format: "%.2f A", metrics.solar.current))
             }
         }
     }
@@ -45,12 +45,12 @@ struct PowerCardsGrid: View {
                 HStack {
                     Text(metrics.battery.direction.label)
                     Spacer()
-                    Text("\(Int(abs(metrics.battery.power).rounded())) W")
+                    AnimatedMetric(text: "\(Int(abs(metrics.battery.power).rounded())) W")
                 }
                 HStack {
-                    Text(String(format: "%.2f V", metrics.battery.voltage))
+                    AnimatedMetric(text: String(format: "%.2f V", metrics.battery.voltage))
                     Spacer()
-                    Text(String(format: "%.2f A", abs(metrics.battery.current)))
+                    AnimatedMetric(text: String(format: "%.2f A", abs(metrics.battery.current)))
                 }
                 .foregroundStyle(Palette.subtleText)
             }
@@ -67,9 +67,9 @@ struct PowerCardsGrid: View {
             trailingBadge: showEstimated && metrics.grid.estimated ? "EST" : nil
         ) {
             HStack {
-                Text("\(Int(metrics.grid.voltage.rounded())) V")
+                AnimatedMetric(text: "\(Int(metrics.grid.voltage.rounded())) V")
                 Spacer()
-                Text(String(format: "%.1f Hz", metrics.grid.frequency))
+                AnimatedMetric(text: String(format: "%.1f Hz", metrics.grid.frequency))
             }
         }
     }
@@ -84,18 +84,45 @@ struct PowerCardsGrid: View {
         ) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("\(Int(metrics.load.apparentPower.rounded())) VA")
+                    AnimatedMetric(text: "\(Int(metrics.load.apparentPower.rounded())) VA")
                     Spacer()
-                    Text(String(format: "PF %.2f", metrics.load.powerFactor))
+                    AnimatedMetric(text: String(format: "PF %.2f", metrics.load.powerFactor))
                 }
                 HStack {
-                    Text("\(Int(metrics.load.voltage.rounded())) V")
+                    AnimatedMetric(text: "\(Int(metrics.load.voltage.rounded())) V")
                     Spacer()
-                    Text("\(Int(metrics.load.percentage.rounded()))%")
+                    AnimatedMetric(text: "\(Int(metrics.load.percentage.rounded()))%")
                 }
                 .foregroundStyle(Palette.subtleText)
             }
         }
+    }
+}
+
+/// Number-morph wrapper that reuses the same `.numericText` content transition +
+/// ease-out animation the primary card values already use. Scrapes the first Double
+/// out of the string so the morph direction hint is accurate even for strings like
+/// "PF 0.98" or "27.3 V"; falls back to a plain cross-fade otherwise.
+struct AnimatedMetric: View {
+    let text: String
+    var font: Font = .caption
+
+    var body: some View {
+        Text(text)
+            .font(font)
+            .monospacedDigit()
+            .contentTransition(.numericText(value: Self.firstNumber(in: text)))
+            .animation(.easeOut(duration: 0.35), value: text)
+    }
+
+    /// Extracts the first signed decimal the scanner can find. Used purely as the
+    /// `value:` hint for `.numericText` so the digit morph knows which way to roll.
+    private static func firstNumber(in s: String) -> Double {
+        let scanner = Scanner(string: s)
+        scanner.charactersToBeSkipped = CharacterSet(charactersIn: " ")
+            .union(.letters)
+            .union(.punctuationCharacters.subtracting(CharacterSet(charactersIn: "-.")))
+        return scanner.scanDouble() ?? 0
     }
 }
 
@@ -147,8 +174,20 @@ private struct PowerCard<Footer: View>: View {
             footer
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.85))
+            // Trailing spacer so Solar/Grid (one-line footers) don't collapse
+            // to a shorter intrinsic height than Battery/Load (two-line
+            // footers). Combined with the `.frame(maxHeight: .infinity)` +
+            // fixed minHeight below, this gives all four cards identical
+            // visual height without tying the layout to a magic pixel count.
+            Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        // 134pt is the tallest natural content size when the footer has two
+        // lines (Battery / Load); Solar / Grid pad to the same via the
+        // trailing Spacer above so all four cards stay visually uniform
+        // without wasting vertical real estate.
+        .frame(maxWidth: .infinity, minHeight: 134, maxHeight: .infinity, alignment: .topLeading)
         .card()
     }
 }

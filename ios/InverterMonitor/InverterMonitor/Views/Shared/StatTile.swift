@@ -16,6 +16,12 @@ struct StatTile: View {
                 Text(value)
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(accent)
+                    .monospacedDigit()
+                    // Mirror the Today-tile animation so numeric readings (temperature,
+                    // voltage, percentage, power) morph smoothly when the 600ms poll
+                    // lands a fresh value, rather than popping.
+                    .contentTransition(.numericText(value: Double(value) ?? 0))
+                    .animation(.easeOut(duration: 0.35), value: value)
                 if let unit {
                     Text(unit)
                         .font(.caption)

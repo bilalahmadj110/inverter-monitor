@@ -75,6 +75,23 @@ struct RecentReadingPoint: Decodable, Equatable, Identifiable {
         batteryPercentage = (try? c.decode(Double.self, forKey: .batteryPercentage)) ?? 0
         gridVoltage = (try? c.decode(Double.self, forKey: .gridVoltage)) ?? 0
     }
+
+    init(
+        timestamp: TimeInterval,
+        solarAvg: Double, solarMin: Double, solarMax: Double,
+        gridAvg: Double, gridMin: Double, gridMax: Double,
+        loadAvg: Double, loadMin: Double, loadMax: Double,
+        batteryAvg: Double, batteryMin: Double, batteryMax: Double,
+        batteryPercentage: Double, gridVoltage: Double
+    ) {
+        self.timestamp = timestamp
+        self.solarAvg = solarAvg; self.solarMin = solarMin; self.solarMax = solarMax
+        self.gridAvg = gridAvg; self.gridMin = gridMin; self.gridMax = gridMax
+        self.loadAvg = loadAvg; self.loadMin = loadMin; self.loadMax = loadMax
+        self.batteryAvg = batteryAvg; self.batteryMin = batteryMin; self.batteryMax = batteryMax
+        self.batteryPercentage = batteryPercentage
+        self.gridVoltage = gridVoltage
+    }
 }
 
 /// `GET /day-readings`
@@ -174,6 +191,73 @@ struct OutagesResponse: Decodable, Equatable {
     static let empty = OutagesResponse(
         from: nil, to: nil, outages: [], count: 0, totalDownSeconds: 0, availability: 1.0
     )
+}
+
+/// `GET /data-gaps` — periods where the continuous_reader wasn't producing data
+/// (service stopped, USB disconnect, reboot). Distinct from `/outages` which
+/// tracks grid-voltage outages. Matches the "Reader Outages" tab on the web.
+struct DataGapsResponse: Decodable, Equatable {
+    var from: String?
+    var to: String?
+    var thresholdSeconds: Int
+    var gaps: [DataGap]
+    var count: Int
+    var totalDownSeconds: Int
+    var availability: Double
+
+    private enum CodingKeys: String, CodingKey {
+        case from, to, gaps, count, availability
+        case thresholdSeconds = "threshold_seconds"
+        case totalDownSeconds = "total_down_seconds"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        from = try? c.decode(String.self, forKey: .from)
+        to = try? c.decode(String.self, forKey: .to)
+        thresholdSeconds = (try? c.decode(Int.self, forKey: .thresholdSeconds)) ?? 60
+        gaps = (try? c.decode([DataGap].self, forKey: .gaps)) ?? []
+        count = (try? c.decode(Int.self, forKey: .count)) ?? 0
+        totalDownSeconds = (try? c.decode(Int.self, forKey: .totalDownSeconds)) ?? 0
+        availability = (try? c.decode(Double.self, forKey: .availability)) ?? 1.0
+    }
+
+    init(from: String?, to: String?, thresholdSeconds: Int, gaps: [DataGap], count: Int, totalDownSeconds: Int, availability: Double) {
+        self.from = from
+        self.to = to
+        self.thresholdSeconds = thresholdSeconds
+        self.gaps = gaps
+        self.count = count
+        self.totalDownSeconds = totalDownSeconds
+        self.availability = availability
+    }
+
+    static let empty = DataGapsResponse(
+        from: nil, to: nil, thresholdSeconds: 60,
+        gaps: [], count: 0, totalDownSeconds: 0, availability: 1.0
+    )
+}
+
+struct DataGap: Decodable, Equatable, Identifiable {
+    var start: TimeInterval
+    var end: TimeInterval
+    var durationSeconds: Int
+
+    var id: TimeInterval { start }
+    var startDate: Date { Date(timeIntervalSince1970: start) }
+    var endDate: Date { Date(timeIntervalSince1970: end) }
+
+    private enum CodingKeys: String, CodingKey {
+        case start, end
+        case durationSeconds = "duration_seconds"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        start = (try? c.decode(Double.self, forKey: .start)) ?? 0
+        end = (try? c.decode(Double.self, forKey: .end)) ?? 0
+        durationSeconds = (try? c.decode(Int.self, forKey: .durationSeconds)) ?? 0
+    }
 }
 
 struct Outage: Decodable, Equatable, Identifiable {

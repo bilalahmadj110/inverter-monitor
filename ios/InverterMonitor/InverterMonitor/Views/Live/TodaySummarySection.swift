@@ -136,6 +136,13 @@ struct TodaySummarySection: View {
 
     // MARK: - Tiles ----------------------------------------------------------
 
+    /// All tiles agree on a fixed minimum height so value morphs (numericText
+    /// transitions) can never change the LazyVGrid's row heights. Without this
+    /// the grid re-measures on every 600 ms status tick, which — combined with
+    /// a scroll bounce at the bottom — produces the visible flicker where
+    /// cards appeared to escape their cells.
+    private static let tileMinHeight: CGFloat = 78
+
     private func summaryTile(title: String, tint: Color, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
@@ -152,8 +159,9 @@ struct TodaySummarySection: View {
                     .font(.caption)
                     .foregroundStyle(Palette.subtleText)
             }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: Self.tileMinHeight, alignment: .topLeading)
         .padding(10)
         .background(Palette.cardSurface.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
         .accessibilityElement(children: .combine)
@@ -168,8 +176,10 @@ struct TodaySummarySection: View {
             Text("\(kwh(activeCharge)) / \(kwh(activeDischarge)) kWh")
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
+                .monospacedDigit()
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: Self.tileMinHeight, alignment: .topLeading)
         .padding(10)
         .background(Palette.cardSurface.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
     }
@@ -183,6 +193,7 @@ struct TodaySummarySection: View {
                 Text("\(Int((summary.selfSufficiency * 100).rounded()))")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
+                    .monospacedDigit()
                 Text("%")
                     .font(.caption)
                     .foregroundStyle(Palette.subtleText)
@@ -190,8 +201,9 @@ struct TodaySummarySection: View {
             Text("Solar share \(Int((summary.solarFraction * 100).rounded()))%")
                 .font(.caption2)
                 .foregroundStyle(Palette.subtleText)
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: Self.tileMinHeight, alignment: .topLeading)
         .padding(10)
         .background(Palette.cardSurface.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
     }

@@ -37,16 +37,25 @@ final class AppEnvironment: ObservableObject {
         self.liveViewModel = liveVM
         self.reportsViewModel = reportsVM
 
-        // Session expired anywhere → flip the AuthViewModel back to signedOut so
-        // RootView re-renders LoginView. Logout best-effort to clear any stale cookie.
-        // Same handler from both Live and Reports so neither tab gets stuck.
-        // We also reset VM state so a fresh sign-in doesn't inherit the previous
-        // user's fault-dedup set / cached metrics.
+        // Session expired anywhere → try a silent re-login using saved Keychain
+        // credentials first; only bounce the user to LoginView if that fails
+        // (e.g. server rotated their password). This keeps the app signed-in
+        // through the server's 60-minute session TTL without any user action.
+        // Same handler from Live and Reports so neither tab gets stuck.
         let handleExpired: () -> Void = { [weak authVM, weak liveVM, weak reportsVM] in
             Task { @MainActor in
+                guard let authVM else { return }
+                if await authVM.attemptSilentLogin() {
+                    // Session is back. Kick a status refresh so the user sees live
+                    // data immediately instead of waiting for the next poll tick.
+                    _ = await liveVM?.fetchStatus()
+                    return
+                }
+                // Silent re-login failed — fall back to the original behavior:
+                // wipe session state and drop to LoginView.
                 liveVM?.resetSessionState()
                 reportsVM?.invalidateHistoryCache()
-                await authVM?.signOut()
+                await authVM.signOut()
             }
         }
         liveVM.onSessionExpired = handleExpired

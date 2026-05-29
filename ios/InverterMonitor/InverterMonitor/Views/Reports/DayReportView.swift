@@ -41,6 +41,10 @@ struct DayReportView: View {
     }
 
     private var controls: some View {
+        // Split into two rows so the Today + Export buttons get full horizontal
+        // room and never wrap onto two lines. Previously the DatePicker's intrinsic
+        // width consumed most of the row and squeezed "Today" into a two-line
+        // label on narrow devices.
         VStack(spacing: 10) {
             HStack(spacing: 8) {
                 Button {
@@ -49,6 +53,7 @@ struct DayReportView: View {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
 
                 DatePicker("", selection: $reports.dayDate, displayedComponents: .date)
                     .labelsHidden()
@@ -62,20 +67,34 @@ struct DayReportView: View {
                     Image(systemName: "chevron.right")
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
 
-                Button("Today") {
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                Button {
                     Task { await reports.jumpToToday() }
+                } label: {
+                    Label("Today", systemImage: "calendar")
+                        .labelStyle(.titleAndIcon)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.small)
 
                 Spacer(minLength: 0)
 
                 Button {
                     showExportDialog = true
                 } label: {
-                    Image(systemName: "square.and.arrow.up")
+                    Label("Export", systemImage: "square.and.arrow.up")
+                        .labelStyle(.titleAndIcon)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
             }
         }
         .padding(12)

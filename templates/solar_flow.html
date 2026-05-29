@@ -468,14 +468,17 @@
                     <div>
                         <div class="text-yellow-300 text-xs">Solar</div>
                         <div class="text-white text-xl font-bold"><span id="today-solar">0.00</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                        <div class="text-white/40 text-[10px] mt-0.5">Peak <span id="today-solar-peak">0</span> W</div>
                     </div>
                     <div>
                         <div class="text-blue-300 text-xs">Grid Import</div>
                         <div class="text-white text-xl font-bold"><span id="today-grid">0.00</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                        <div class="text-white/40 text-[10px] mt-0.5">Peak <span id="today-grid-peak">0</span> W</div>
                     </div>
                     <div>
                         <div class="text-purple-300 text-xs">Load</div>
                         <div class="text-white text-xl font-bold"><span id="today-load">0.00</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                        <div class="text-white/40 text-[10px] mt-0.5">Peak <span id="today-load-peak">0</span> W</div>
                     </div>
                     <div>
                         <div class="text-green-300 text-xs">Bat. Charge / Discharge</div>
@@ -601,7 +604,8 @@
             { key: 'battery', label: 'Battery', border: '#34D399', dashed: true },
         ];
 
-        // One dataset per metric — the series average. No min/max envelope bands.
+        // One dataset per power metric (the bucket average), plus a hidden-by-default grid-voltage
+        // overlay on a secondary right axis — click its legend entry to reveal it.
         const datasets = [];
         const idx = {};
         metrics.forEach((m) => {
@@ -613,33 +617,120 @@
                 pointRadius: 0,
                 borderWidth: 2,
                 fill: false,
-                tension: 0,
+                tension: 0.25,
                 spanGaps: true,
+                yAxisID: 'y',
                 ...(m.dashed ? { borderDash: [6, 4] } : {}),
             });
         });
+        idx.voltage = datasets.length;
+        datasets.push({
+            label: 'Grid V', data: [],
+            borderColor: '#F472B6',
+            backgroundColor: 'transparent',
+            pointRadius: 0,
+            borderWidth: 1.5,
+            borderDash: [2, 3],
+            fill: false,
+            tension: 0.25,
+            spanGaps: true,
+            yAxisID: 'y1',
+            hidden: true,
+        });
 
         let rangeMinutes = 30;
-        let bucketSeconds = 15;   // updated from server response; used to decide when gaps should break the line
+        let bucketSeconds = 15;   // updated from server response; used to size the gap-break threshold
         let isZoomed = false;     // when true, stop rolling the axis and stop trimming old points
+        // The Pi (data source) and this browser may have skewed clocks. Historic buckets carry the
+        // SERVER timestamp; we measure the offset from /recent-readings' now_ms and apply it to every
+        // browser-clock value (live append, axis roll, trim) so both sit in ONE time domain. Without
+        // this the live tail drifts away from the historic line — the "doesn't update" seam.
+        let clockOffset = 0;
+        let liveGaps = [];        // [{start,end}] server-time reader-outage windows, shaded on the chart
+        const nowServer = () => Date.now() + clockOffset;
+
+        // Break the line only on REAL reader outages. The server buckets the series at
+        // `bucketSeconds`, so adjacent points are normally that far apart. We break only when more
+        // than ~2.5 buckets are missing, with a 60s floor. This is the fix for ">2h renders nothing":
+        // previously the threshold was a flat 60s while 6h/12h/24h buckets are 180/360/720s apart, so
+        // Chart.js broke the line at EVERY point (and with pointRadius:0 the plot looked empty).
+        const READER_GAP_FLOOR_MS = 60 * 1000;
+        const gapThresholdMs = () =>
+            bucketSeconds > 0 ? Math.max(READER_GAP_FLOOR_MS, bucketSeconds * 2.5 * 1000) : READER_GAP_FLOOR_MS;
+        function applyGapThreshold() {
+            const gapMs = gapThresholdMs();
+            chart.data.datasets.forEach((ds) => { ds.spanGaps = gapMs; });
+        }
+
+        // ---- inline plugins (draw-only; no interaction with the data pipeline) ------------------
+
+        // Shade reader-outage windows so a break in the line reads as "monitor was down" rather
+        // than "the system produced zero".
+        const gapShadePlugin = {
+            id: 'gapShade',
+            beforeDatasetsDraw(c) {
+                if (!liveGaps.length) return;
+                const { ctx: g, chartArea: area, scales } = c;
+                const xs = scales.x;
+                g.save();
+                g.fillStyle = 'rgba(239, 68, 68, 0.10)';
+                liveGaps.forEach((gap) => {
+                    let x1 = Math.max(area.left, Math.min(area.right, xs.getPixelForValue(gap.start)));
+                    let x2 = Math.max(area.left, Math.min(area.right, xs.getPixelForValue(gap.end)));
+                    if (x2 - x1 >= 1) g.fillRect(x1, area.top, x2 - x1, area.bottom - area.top);
+                });
+                g.restore();
+            },
+        };
+
+        // Draw the latest value of each visible series as a small pill pinned to the right edge,
+        // so the current reading is legible without hovering.
+        const endLabelPlugin = {
+            id: 'endLabels',
+            afterDatasetsDraw(c) {
+                const { ctx: g, chartArea: area } = c;
+                g.save();
+                g.font = '600 11px system-ui, -apple-system, sans-serif';
+                g.textBaseline = 'middle';
+                g.textAlign = 'left';
+                c.data.datasets.forEach((ds, di) => {
+                    if (!c.isDatasetVisible(di)) return;
+                    const pts = ds.data;
+                    const last = pts && pts.length ? pts[pts.length - 1] : null;
+                    if (!last || !isFinite(last.y) || !isFinite(last.x)) return;
+                    const scale = c.scales[ds.yAxisID] || c.scales.y;
+                    const py = scale.getPixelForValue(last.y);
+                    if (py < area.top || py > area.bottom) return;
+                    const unit = ds.yAxisID === 'y1' ? 'V' : 'W';
+                    const text = `${Math.round(last.y)}${unit}`;
+                    const w = g.measureText(text).width + 10;
+                    const x = area.right - w - 2;
+                    g.fillStyle = 'rgba(15, 23, 42, 0.78)';
+                    if (g.roundRect) { g.beginPath(); g.roundRect(x, py - 9, w, 18, 4); g.fill(); }
+                    else { g.fillRect(x, py - 9, w, 18); }
+                    g.fillStyle = ds.borderColor;
+                    g.fillText(text, x + 5, py + 0.5);
+                });
+                g.restore();
+            },
+        };
 
         const chart = new Chart(ctx, {
             type: 'line',
             data: { datasets },
+            plugins: [gapShadePlugin, endLabelPlugin],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false,
                 parsing: false,
-                // Only break the line when the gap is unusually large compared to the bucket size.
-                // This keeps lines continuous through normal jitter while still showing real outages.
                 spanGaps: true,
                 normalized: true,
-                interaction: { mode: 'nearest', axis: 'x', intersect: false },
+                interaction: { mode: 'index', axis: 'x', intersect: false },
                 plugins: {
                     decimation: { enabled: true, algorithm: 'lttb', samples: 300 },
                     legend: {
-                        labels: { color: '#E5E7EB' },
+                        labels: { color: '#E5E7EB', usePointStyle: true, boxWidth: 8 },
                     },
                     tooltip: {
                         backgroundColor: 'rgba(15, 23, 42, 0.92)',
@@ -655,7 +746,10 @@
                                     ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                                     : d.toLocaleTimeString();
                             },
-                            label: (c) => `${c.dataset.label}: ${Math.round(c.parsed.y)} W`,
+                            label: (c) => {
+                                const unit = c.dataset.yAxisID === 'y1' ? 'V' : 'W';
+                                return `${c.dataset.label}: ${Math.round(c.parsed.y)} ${unit}`;
+                            },
                         },
                     },
                     zoom: {
@@ -695,6 +789,7 @@
                             maxRotation: 0,
                             autoSkip: true,
                             maxTicksLimit: 8,
+                            font: { size: 11 },
                             // Regular function: Chart.js binds `this` to the scale, so we read the
                             // visible span without touching `chart` (which is still in its TDZ
                             // during the very first render pass).
@@ -712,30 +807,32 @@
                                 return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                             },
                         },
-                        grid: { color: 'rgba(255,255,255,0.08)' },
+                        grid: { color: 'rgba(255,255,255,0.14)' },
+                        border: { color: 'rgba(255,255,255,0.25)' },
                     },
                     y: {
-                        ticks: { color: '#CBD5E1', callback: (v) => `${v} W` },
-                        grid: { color: 'rgba(255,255,255,0.08)' },
+                        ticks: { color: '#CBD5E1', font: { size: 11 }, callback: (v) => `${v} W` },
+                        grid: { color: 'rgba(255,255,255,0.14)' },
+                        border: { color: 'rgba(255,255,255,0.25)' },
                         beginAtZero: true,
+                    },
+                    y1: {
+                        // Only drawn when the Grid V series is toggled on.
+                        display: 'auto',
+                        position: 'right',
+                        beginAtZero: false,
+                        ticks: { color: '#F9A8D4', font: { size: 11 }, callback: (v) => `${v} V` },
+                        grid: { drawOnChartArea: false },
+                        border: { color: 'rgba(244,114,182,0.4)' },
                     },
                 },
             },
         });
-
-        // Break the line only on real reader outages. Anything over READER_GAP_MS between two
-        // consecutive points is treated as a data gap (this is the same threshold the Outages
-        // report uses, so what you see on the chart matches what's in that table).
-        const READER_GAP_MS = 60 * 1000;
-        function applyGapThreshold() {
-            chart.data.datasets.forEach((ds) => {
-                ds.spanGaps = READER_GAP_MS;
-            });
-        }
+        applyGapThreshold();
 
         function rollAxis() {
             if (isZoomed) return;            // don't fight the user's zoom
-            const now = Date.now();
+            const now = nowServer();
             chart.options.scales.x.min = now - rangeMinutes * 60 * 1000;
             chart.options.scales.x.max = now;
             chart.update('none');
@@ -744,6 +841,7 @@
         const buttons = document.querySelectorAll('.live-range-btn');
         const resetBtn = document.getElementById('live-reset-zoom');
         const activeClasses = ['bg-blue-600', 'hover:bg-blue-700'];
+        const ALLOWED_RANGES = [5, 30, 120, 360, 720, 1440];
 
         function setActive(min) {
             buttons.forEach((b) => {
@@ -751,11 +849,39 @@
                 b.classList.toggle(activeClasses[0], on);
                 b.classList.toggle(activeClasses[1], on);
             });
+            try { localStorage.setItem('solar_live_range', String(min)); } catch (e) { /* ignore */ }
         }
 
         function showResetZoom(on) {
             if (!resetBtn) return;
             resetBtn.classList.toggle('hidden', !on);
+        }
+
+        // Loading overlay anchored to the chart's position:relative wrapper.
+        const wrap = ctx.parentElement;
+        let loadingEl = null;
+        function showLoading() {
+            if (!wrap || loadingEl) return;
+            loadingEl = document.createElement('div');
+            loadingEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#CBD5E1;font-size:0.9rem;background:rgba(15,23,42,0.25);pointer-events:none;z-index:5;';
+            loadingEl.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Loading…';
+            wrap.appendChild(loadingEl);
+        }
+        function hideLoading() {
+            if (loadingEl) { loadingEl.remove(); loadingEl = null; }
+        }
+
+        // Reader-outage windows derived from the loaded buckets, using the same threshold the line
+        // uses to break — so the shaded regions line up exactly with the gaps in the line.
+        function recomputeGaps(points) {
+            const gaps = [];
+            const thr = gapThresholdMs();
+            for (let i = 1; i < points.length; i++) {
+                const a = points[i - 1].timestamp * 1000;
+                const b = points[i].timestamp * 1000;
+                if (b - a > thr) gaps.push({ start: a, end: b });
+            }
+            liveGaps = gaps;
         }
 
         async function loadData(min) {
@@ -764,20 +890,27 @@
             // Switching range always exits zoom mode and reloads the full window.
             isZoomed = false;
             showResetZoom(false);
+            showLoading();
             try {
                 const res = await fetch(`/recent-readings?minutes=${min}`);
                 const data = await res.json();
                 const points = (data && data.points) || [];
                 if (data && data.bucket_seconds) bucketSeconds = Number(data.bucket_seconds);
+                if (data && typeof data.now_ms === 'number') clockOffset = data.now_ms - Date.now();
                 metrics.forEach((m) => {
                     chart.data.datasets[idx[m.key]].data =
                         points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_avg`] }));
                 });
+                chart.data.datasets[idx.voltage].data =
+                    points.map((p) => ({ x: p.timestamp * 1000, y: p.grid_voltage }));
+                recomputeGaps(points);
                 applyGapThreshold();
                 if (chart.resetZoom) chart.resetZoom('none');
                 rollAxis();
             } catch (err) {
                 console.error('Failed to load recent readings', err);
+            } finally {
+                hideLoading();
             }
         }
 
@@ -797,23 +930,34 @@
             showResetZoom(false);
             rollAxis();
         });
-        loadData(30);
+
+        // Restore the last-used range (falls back to 30m on a missing/invalid value).
+        let initialRange = 30;
+        try {
+            const saved = parseInt(localStorage.getItem('solar_live_range'), 10);
+            if (ALLOWED_RANGES.includes(saved)) initialRange = saved;
+        } catch (e) { /* ignore */ }
+        loadData(initialRange);
 
         // Trim any points older than the visible window so the arrays don't grow unbounded.
         // While zoomed we keep the full loaded window so the user can pan/zoom freely.
         function trimOld() {
             if (isZoomed) return;
-            const cutoff = Date.now() - rangeMinutes * 60 * 1000;
+            const cutoff = nowServer() - rangeMinutes * 60 * 1000;
             chart.data.datasets.forEach((ds) => {
                 while (ds.data.length && ds.data[0].x < cutoff) ds.data.shift();
             });
         }
 
-        // Live append: every inverter_update from the WebSocket pushes one point per metric.
+        // Live append: every inverter_update from the WebSocket pushes one point per series. We
+        // stamp x with the SERVER time (timing.end_time) when present so live points share the
+        // historic buckets' time domain — this is what makes the line advance smoothly in realtime.
         window.addEventListener('inverter_update', (ev) => {
             const d = ev.detail;
             if (!d || !d.success || !d.metrics) return;
-            const t = Date.now();
+            const t = (d.timing && typeof d.timing.end_time === 'number')
+                ? d.timing.end_time * 1000
+                : nowServer();
             const m = d.metrics;
             const values = {
                 solar: m.solar && m.solar.power,
@@ -825,9 +969,15 @@
                 const v = Number(values[metric.key]) || 0;
                 chart.data.datasets[idx[metric.key]].data.push({ x: t, y: v });
             });
+            chart.data.datasets[idx.voltage].data.push({ x: t, y: Number(m.grid && m.grid.voltage) || 0 });
             trimOld();
             rollAxis();
         });
+
+        // Recover from a dropped socket: on reconnect, reload the full window so the chart can never
+        // be left silently stale. (Socket.IO fires 'connect' on every reconnect.) Skip while the
+        // user has zoomed/panned so we don't yank their view.
+        window.addEventListener('inverter_reconnect', () => { if (!isZoomed) loadData(rangeMinutes); });
 
         // Rolling axis tick — paused automatically while the user has zoomed in.
         setInterval(rollAxis, 1000);

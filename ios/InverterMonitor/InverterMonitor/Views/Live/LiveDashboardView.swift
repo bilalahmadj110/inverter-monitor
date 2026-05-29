@@ -27,6 +27,7 @@ struct LiveDashboardView: View {
                     SystemInfoGrid(live: live)
                     LivePowerChartSection(
                         readings: live.recentReadings,
+                        liveTail: live.liveTail,
                         range: Binding(get: { live.liveRange }, set: { live.liveRange = $0 }),
                         isLoading: live.isLoadingRecent
                     )
@@ -34,8 +35,35 @@ struct LiveDashboardView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 40)
+                // The 600 ms status tick republishes `live.status` and
+                // `live.liveTail` — attaching a nil animation to each of those
+                // keyed change events prevents SwiftUI from cascading an
+                // implicit animation transaction down the whole scroll-view
+                // subtree. The explicit `.animation(.easeOut, value: value)`
+                // we apply directly to each numeric Text view still runs,
+                // because those are scoped to the Text and not inherited from
+                // here. Without this guard, every poll tick ran an implicit
+                // animation on the overall layout, which during a bottom-edge
+                // scroll bounce manifested as Today / power cards visibly
+                // escaping their cells.
+                .animation(nil, value: live.status)
+                .animation(nil, value: live.liveTail)
+                .animation(nil, value: live.recentReadings)
+                // Tap anywhere in the scroll surface that isn't the chart
+                // itself — cards, flow diagram, empty padding — dismisses a
+                // lingering crosshair + tooltip. The chart's own overlay has
+                // a higher-priority DragGesture so it still handles its own
+                // pointer events first.
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    LivePowerChartSection.broadcastDismiss()
+                }
             }
             .scrollIndicators(.hidden)
+            // Must keep bouncing enabled in both axes — `.refreshable` relies on
+            // the pull-past-top overscroll to trigger. The bottom-edge jitter
+            // we used to see on force-flick is now mostly fixed by moving the
+            // FlowDiagram's per-poll text out of its drawingGroup.
             .refreshable {
                 _ = await live.fetchStatus()
                 await live.fetchStats()
@@ -75,26 +103,39 @@ struct LiveDashboardView: View {
                 Spacer(minLength: 0)
             }
 
-            HStack(spacing: 8) {
-                ModePill(system: live.status.system)
-                if live.status.system.chargeStage != .idle {
-                    StatusPill(
-                        label: live.status.system.chargeStage.label,
-                        systemImage: "bolt.fill",
-                        tint: Color.green,
-                        backgroundTint: Palette.batteryFill
-                    )
+            // Mode/charge/grid pills can add up to more width than the viewport on
+            // narrow screens (iPhone SE, split-view) and the SwiftUI HStack wraps
+            // into an ugly second line. A horizontal ScrollView keeps every pill
+            // on one row, lets the user pan to the overflow, and hides scroll
+            // indicators so the row still looks like a static chip strip.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ModePill(system: live.status.system)
+                        .fixedSize()
+                    if live.status.system.chargeStage != .idle {
+                        StatusPill(
+                            label: live.status.system.chargeStage.label,
+                            systemImage: "bolt.fill",
+                            tint: Color.green,
+                            backgroundTint: Palette.batteryFill
+                        )
+                        .fixedSize()
+                    }
+                    if live.status.system.isAcChargingOn || live.status.metrics.grid.inUse {
+                        StatusPill(
+                            label: live.gridFlowLabel.isEmpty ? "Grid" : live.gridFlowLabel,
+                            systemImage: "powerplug.fill",
+                            tint: Color.blue,
+                            backgroundTint: Palette.gridFill
+                        )
+                        .fixedSize()
+                    }
                 }
-                if live.status.system.isAcChargingOn || live.status.metrics.grid.inUse {
-                    StatusPill(
-                        label: live.gridFlowLabel.isEmpty ? "Grid" : live.gridFlowLabel,
-                        systemImage: "powerplug.fill",
-                        tint: Color.blue,
-                        backgroundTint: Palette.gridFill
-                    )
-                }
-                Spacer(minLength: 0)
+                // A tiny trailing pad so the last pill doesn't kiss the screen edge
+                // when the user has scrolled it fully into view.
+                .padding(.trailing, 4)
             }
+            .scrollClipDisabled()
         }
     }
 }

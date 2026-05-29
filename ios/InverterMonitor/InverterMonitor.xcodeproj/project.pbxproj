@@ -7,295 +7,310 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		046AA72CF0C38D197A96F1DC /* InverterMonitorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B1204F32E49DFB56FD8E3F9 /* InverterMonitorApp.swift */; };
-		0585E0A0D4D02184D70322FC /* InverterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB4CE148FC43F7A55C2F5E0B /* InverterService.swift */; };
-		05F759B653E3261263551CAE /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 406274EB862E0F925987D947 /* AuthService.swift */; };
-		070140D03D3D392A332A0F5D /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 593F55C78EA11AA113335F3F /* AppEnvironment.swift */; };
-		111ED052CDC38B45FBFFB827 /* InverterStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD14B48951F0A278131E4B9B /* InverterStatus.swift */; };
-		15C5F633D80B0645012386D4 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A5DE1B2F50C3AF6C5D77C4D /* RootView.swift */; };
-		1B21F5562CA126C2DC2A512B /* LivePowerChartSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2096754FF6A9DA04A07E7D /* LivePowerChartSection.swift */; };
-		218DD87B73272E2CC7D9AF13 /* RefreshToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A7E06AA94F404AA604526E /* RefreshToolbarButton.swift */; };
-		24FC62C1D350459DDC457F8F /* YearReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECE73D706D09870A614828B4 /* YearReportView.swift */; };
-		33C0A0FE27EC3D621F9F3390 /* ReportsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7831EA412970B5D04F00F020 /* ReportsView.swift */; };
-		340BF03E6F216EA71737FCA7 /* LiveDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E9E9A828A65ACD1E74388A /* LiveDashboardView.swift */; };
-		34BE4B190BCA8C818014872E /* OutagesReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CBF61538BACAAB84838FF50 /* OutagesReportView.swift */; };
-		52FA22F05A3F357F34B7C261 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F23E2F029A922E19D9F73D1A /* APIClient.swift */; };
-		603367213F211C09226E52EC /* RawReadingDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 621CC731D49B7F1BDF266C8D /* RawReadingDetailSheet.swift */; };
-		61112771326BC5A821EF1745 /* RawReadingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1856BF9AC049BDBC4EAD4011 /* RawReadingsView.swift */; };
-		612489421663E520E939892F /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27C858FB243332EB65A8D4AF /* MainTabView.swift */; };
-		61C72C91D4254A0883641C54 /* Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58FEB230263F2055851A57CA /* Summary.swift */; };
-		68AE4EDA9FC5886A0FBF6C23 /* LiveDashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9F0CC0ED825601E6AABF59 /* LiveDashboardViewModel.swift */; };
-		73F0FC50563CBA4805121E6D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EC16D9091E8625D977868A19 /* Foundation.framework */; };
-		7993ED3F284FBEC9DF38E3E1 /* InverterMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EAA1390894679621AF11BA9 /* InverterMetrics.swift */; };
-		8040D946E1E5A6CC2D510D6C /* NotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19BE8A8EA235C595E6EBCC9C /* NotificationCoordinator.swift */; };
-		82C15D5BF001B812DDFD81D4 /* CommandService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE32935852D3B1B9C33DEA39 /* CommandService.swift */; };
-		8805A0E5143A6EEC3B2A5802 /* StatTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3E3C00FEBD86A2EBF26270 /* StatTile.swift */; };
-		94E5BF346AD9FD45BD1A7E6C /* DayReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE1079AE8F41E0ADA714E957 /* DayReportView.swift */; };
-		9950EE3EED951A139AA000A6 /* FlowDiagramView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68F45C8BB28FAEA2E046FDFD /* FlowDiagramView.swift */; };
-		9FB7C2FE7E1FAADDB74E866C /* PowerCardsGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8A99134F2213CF69C9C5C9C /* PowerCardsGrid.swift */; };
-		A0D5F42E3F2260FEF56B94C1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E7AC3722311C643C9E8FFD74 /* Assets.xcassets */; };
-		A6F4B8FA1269073E927446FD /* MonthReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EA5E35A2F7A416F040E381E /* MonthReportView.swift */; };
-		A9B028A3D48B619ED957C04A /* BatteryGauge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98AE638BDB6199D28971B64D /* BatteryGauge.swift */; };
-		AF90533EC85C253FBE326523 /* TodaySummarySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73973B47FBC2C71B6B3C665C /* TodaySummarySection.swift */; };
-		B50595C565F6BECCDEB41265 /* StatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461B1F8FA498875FD18E8C94 /* StatusPill.swift */; };
-		BBC750BEC5C9281FD51DDBD8 /* Readings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979690CB20F175008F3F4D50 /* Readings.swift */; };
-		BE8C2C458CC732C1A2524BCE /* SystemInfoGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7CF99C1320149389EAA2A2 /* SystemInfoGrid.swift */; };
-		C0676ABEBA45700DAD39740F /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 911D1E71F8F8168968D0B89A /* AppSettings.swift */; };
-		C26AA6B593CA37C6D529D0F2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE4868BD4252C87C4002A518 /* SettingsView.swift */; };
-		C560C824CA1789ADF73EF084 /* InverterConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFA3B275AD9D00E1D0903509 /* InverterConfig.swift */; };
-		D59FA0C51C42B4C068D568A7 /* InverterIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F4259984D5290E30EC1B0BB /* InverterIntents.swift */; };
-		D6798CEF3193D66843ACC640 /* SystemInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645CAF218600D2B3FF3A3CDA /* SystemInfo.swift */; };
-		E917BF0DCE33B4E45E0A8707 /* ComponentDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87CACDEF584A5A3AFD67258B /* ComponentDetailSheet.swift */; };
-		E9E836A96F4DCFE07B9DA1C5 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FABFA4A5CC8FC29DE23762E3 /* AuthViewModel.swift */; };
-		F0DF2761FEC25B668622C6A9 /* ReportsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BF77F03115AF112EC8E7D16 /* ReportsViewModel.swift */; };
-		FBC77A65E0A14C170C88EF94 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40872A429217B0E5B8F8E8A3 /* LoginView.swift */; };
-		FD64289A3952CDDA8136B471 /* ThemeColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9763BDE227BAC282DE30562F /* ThemeColors.swift */; };
+		01130D02A40C22F850F9AFEB /* RawReadingDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84413A135AA5296F922C7389 /* RawReadingDetailSheet.swift */; };
+		03DA5A955315AE336F535126 /* ReportsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49781AA8AF00CF7FE55FC388 /* ReportsView.swift */; };
+		0CFB3A67D074233175D46304 /* LiveDashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2A27677E6FD63A8F018886B /* LiveDashboardViewModel.swift */; };
+		13B74CBD2F396344EC8E17F2 /* SystemInfoGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D14CA60EA2E957FBCA9A882 /* SystemInfoGrid.swift */; };
+		1655B9666A607B88357E4C1A /* OutagesReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBAFAC4AE05C10DB3715E768 /* OutagesReportView.swift */; };
+		1895178B4BE4162F38E4D1D9 /* RefreshToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504A5A90FE538901641682E3 /* RefreshToolbarButton.swift */; };
+		19A8E6952F5145EF6963E60D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F5E71730555466B0B85927 /* RootView.swift */; };
+		1DC855A2C89B001A35C98C47 /* ThemeColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 278512777E1A004B8B25B53E /* ThemeColors.swift */; };
+		20E9B7D954AD77161FC801E6 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6192D36B324AF8CC5B630234 /* APIClient.swift */; };
+		26A71F80E4A429E398960E30 /* DayReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD2EA82E12BFAC6DEE40EDD /* DayReportView.swift */; };
+		2841D344643F7F60FC9F82D1 /* NotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93ADCC917A9BD74C6091ACFB /* NotificationCoordinator.swift */; };
+		29DA19D312FE465F5DDC9243 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AEE98069ED65F98D9B1C3663 /* Assets.xcassets */; };
+		2D684780E41968BE988CAF88 /* Readings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14846DF2E3C82BEB58783B80 /* Readings.swift */; };
+		2F2749CC61F5CF4C7E421142 /* StatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03550F891DB18E23959677EB /* StatusPill.swift */; };
+		2FEE53B6E1B228BDF127777D /* SystemInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29F4A34D40F2894F53B3B785 /* SystemInfo.swift */; };
+		33309E680E3AEBF4FEA385BE /* TodaySummarySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BB26D8DBACFD99B5D409851 /* TodaySummarySection.swift */; };
+		3751801633EA7FDAF74EBF14 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 012D8A822D29494235006883 /* AuthViewModel.swift */; };
+		413F28DD70FBC58D46BD052D /* LiveDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49E2FEF00681CEC4BFE7DCEF /* LiveDashboardView.swift */; };
+		42D91DF721BE345B569FBCD0 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7FDC64B2CEC0BA877A707B5 /* AuthService.swift */; };
+		42F05C4962E6D2047CBED04F /* YearReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F92622765CC56842C6B1D7D /* YearReportView.swift */; };
+		4ABB46AA1CD6C4AF1C72789E /* CommandService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC6733831630206998E059A /* CommandService.swift */; };
+		5208FA369592FAD90D181AB3 /* CostSavings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5373720D66CC84CAE2858CF1 /* CostSavings.swift */; };
+		5EC5BADDAD2E0BCA621F248B /* ReportsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D32814E4472F250CC1BD994 /* ReportsViewModel.swift */; };
+		6270E900E2464C5D5ECDAB58 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83DC80E5A4361CD8993CAFE1 /* AppEnvironment.swift */; };
+		64D05A8F0A34B9C5C40042F0 /* InverterMonitorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94E769F74474CAD45736940 /* InverterMonitorApp.swift */; };
+		6C56413CE4A6BE0AED55F245 /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B05D3AABFCC9B73C9547AD3 /* CredentialStore.swift */; };
+		7287C4007FCDDB43585F2CF9 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BEE05BD7559434AEF8DB3D8E /* Foundation.framework */; };
+		84D7AD538459D636EDD5BEF4 /* SavingsReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FA9CE54C5B8B8597BBD252E /* SavingsReportView.swift */; };
+		916A769F1425817FD99385DF /* RawReadingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B13C8A14B17FC6830E993558 /* RawReadingsView.swift */; };
+		9BFC1EA156AD5B928E66023A /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EED982DB4BA1B07404EA194 /* AppSettings.swift */; };
+		9FE3CDC8F26B23DF072F672E /* InverterStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C985C9C872BE568112CC330 /* InverterStatus.swift */; };
+		A5F39EE06EB45010E74A88C7 /* InverterConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB238B6E38F9D35005F8E5A5 /* InverterConfig.swift */; };
+		A8CB9E5B8B3944B8B18DAAC7 /* InverterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9574DF3C1C6D81DC604FB4FE /* InverterService.swift */; };
+		A97840FE57F3BD2D7B5347A5 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D02E35542E1E654A8BF4882 /* LoginView.swift */; };
+		B00D08F23356C55F8F3D8B2A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2914AA4162E4FD0C85BCBC3B /* SettingsView.swift */; };
+		B429C0835B7ECF8B2A6C3D32 /* InverterMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4029CEFCAF5904DA89C284E5 /* InverterMetrics.swift */; };
+		B759F7F6B20728A2ABE53F1E /* InverterIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F8F030EFD11B0119E44CF4 /* InverterIntents.swift */; };
+		C45F44E7F1295C21145301C1 /* SavingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 774E69DC0587781F94D87334 /* SavingsView.swift */; };
+		C5A9A3B4F489973DDEC5F468 /* LivePowerChartSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACDD48DF4885496A8C078885 /* LivePowerChartSection.swift */; };
+		C6A855D6416055D28A79B31A /* ComponentDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C66CB36AB131F8E6182C029 /* ComponentDetailSheet.swift */; };
+		C835B6C710DAF3604FA6CE7C /* ReaderOutagesReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B651452E813A5194A9C84D4C /* ReaderOutagesReportView.swift */; };
+		CBC72F11FE628E1B72FC1E62 /* StatTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91EB5D109346F2EEFB90FFE3 /* StatTile.swift */; };
+		CC13324A1571E251208106C3 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E09C2EF98B3AC701D57F8E7C /* MainTabView.swift */; };
+		DA594B1D6E4348475743787E /* Summary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BDE083EFC4E0D9197C940A4 /* Summary.swift */; };
+		E5A2EC47540538C6727B3DC2 /* BatteryGauge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36AD9F22A7CFCEAA24864BC /* BatteryGauge.swift */; };
+		E74AFB1DD9F8C1DC90A066D7 /* PowerCardsGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE33B213D30B2F82EC8FF1C /* PowerCardsGrid.swift */; };
+		F794F22712206589B536CDF2 /* MonthReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C15621057A335744415F91B /* MonthReportView.swift */; };
+		FC9829456DBC8DC0D3BC38E4 /* FlowDiagramView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B32A316BB618DB452520235E /* FlowDiagramView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		1065F8D504CF7DB52CC0F915 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		1856BF9AC049BDBC4EAD4011 /* RawReadingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RawReadingsView.swift; sourceTree = "<group>"; };
-		19BE8A8EA235C595E6EBCC9C /* NotificationCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationCoordinator.swift; sourceTree = "<group>"; };
-		1A5DE1B2F50C3AF6C5D77C4D /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
-		1B7CF99C1320149389EAA2A2 /* SystemInfoGrid.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SystemInfoGrid.swift; sourceTree = "<group>"; };
-		27C858FB243332EB65A8D4AF /* MainTabView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
-		35A7E06AA94F404AA604526E /* RefreshToolbarButton.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RefreshToolbarButton.swift; sourceTree = "<group>"; };
-		3BF77F03115AF112EC8E7D16 /* ReportsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReportsViewModel.swift; sourceTree = "<group>"; };
-		3EA5E35A2F7A416F040E381E /* MonthReportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MonthReportView.swift; sourceTree = "<group>"; };
-		406274EB862E0F925987D947 /* AuthService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
-		40872A429217B0E5B8F8E8A3 /* LoginView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		461B1F8FA498875FD18E8C94 /* StatusPill.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StatusPill.swift; sourceTree = "<group>"; };
-		58FEB230263F2055851A57CA /* Summary.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Summary.swift; sourceTree = "<group>"; };
-		593F55C78EA11AA113335F3F /* AppEnvironment.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
-		621CC731D49B7F1BDF266C8D /* RawReadingDetailSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RawReadingDetailSheet.swift; sourceTree = "<group>"; };
-		645CAF218600D2B3FF3A3CDA /* SystemInfo.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SystemInfo.swift; sourceTree = "<group>"; };
-		68F45C8BB28FAEA2E046FDFD /* FlowDiagramView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowDiagramView.swift; sourceTree = "<group>"; };
-		73973B47FBC2C71B6B3C665C /* TodaySummarySection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TodaySummarySection.swift; sourceTree = "<group>"; };
-		7831EA412970B5D04F00F020 /* ReportsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReportsView.swift; sourceTree = "<group>"; };
-		7F4259984D5290E30EC1B0BB /* InverterIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterIntents.swift; sourceTree = "<group>"; };
-		87CACDEF584A5A3AFD67258B /* ComponentDetailSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ComponentDetailSheet.swift; sourceTree = "<group>"; };
-		8B1204F32E49DFB56FD8E3F9 /* InverterMonitorApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterMonitorApp.swift; sourceTree = "<group>"; };
-		8CBF61538BACAAB84838FF50 /* OutagesReportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OutagesReportView.swift; sourceTree = "<group>"; };
-		8E3E3C00FEBD86A2EBF26270 /* StatTile.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StatTile.swift; sourceTree = "<group>"; };
-		911D1E71F8F8168968D0B89A /* AppSettings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
-		9763BDE227BAC282DE30562F /* ThemeColors.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ThemeColors.swift; sourceTree = "<group>"; };
-		979690CB20F175008F3F4D50 /* Readings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Readings.swift; sourceTree = "<group>"; };
-		98AE638BDB6199D28971B64D /* BatteryGauge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BatteryGauge.swift; sourceTree = "<group>"; };
-		9EAA1390894679621AF11BA9 /* InverterMetrics.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterMetrics.swift; sourceTree = "<group>"; };
-		AB4CE148FC43F7A55C2F5E0B /* InverterService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterService.swift; sourceTree = "<group>"; };
-		AD14B48951F0A278131E4B9B /* InverterStatus.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterStatus.swift; sourceTree = "<group>"; };
-		AE4868BD4252C87C4002A518 /* SettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		B8E9E9A828A65ACD1E74388A /* LiveDashboardView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveDashboardView.swift; sourceTree = "<group>"; };
-		B95376371094872D5B09F804 /* InverterMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = InverterMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		BE1079AE8F41E0ADA714E957 /* DayReportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DayReportView.swift; sourceTree = "<group>"; };
-		CA9F0CC0ED825601E6AABF59 /* LiveDashboardViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveDashboardViewModel.swift; sourceTree = "<group>"; };
-		CD2096754FF6A9DA04A07E7D /* LivePowerChartSection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LivePowerChartSection.swift; sourceTree = "<group>"; };
-		DFA3B275AD9D00E1D0903509 /* InverterConfig.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterConfig.swift; sourceTree = "<group>"; };
-		E7AC3722311C643C9E8FFD74 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		E8A99134F2213CF69C9C5C9C /* PowerCardsGrid.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PowerCardsGrid.swift; sourceTree = "<group>"; };
-		EC16D9091E8625D977868A19 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
-		ECE73D706D09870A614828B4 /* YearReportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = YearReportView.swift; sourceTree = "<group>"; };
-		EE32935852D3B1B9C33DEA39 /* CommandService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CommandService.swift; sourceTree = "<group>"; };
-		F23E2F029A922E19D9F73D1A /* APIClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
-		FABFA4A5CC8FC29DE23762E3 /* AuthViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		012D8A822D29494235006883 /* AuthViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		03550F891DB18E23959677EB /* StatusPill.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StatusPill.swift; sourceTree = "<group>"; };
+		059A71377481B0901CD08E90 /* InverterMonitor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = InverterMonitor.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		05F8F030EFD11B0119E44CF4 /* InverterIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterIntents.swift; sourceTree = "<group>"; };
+		0C66CB36AB131F8E6182C029 /* ComponentDetailSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ComponentDetailSheet.swift; sourceTree = "<group>"; };
+		14846DF2E3C82BEB58783B80 /* Readings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Readings.swift; sourceTree = "<group>"; };
+		1B05D3AABFCC9B73C9547AD3 /* CredentialStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CredentialStore.swift; sourceTree = "<group>"; };
+		1D02E35542E1E654A8BF4882 /* LoginView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		278512777E1A004B8B25B53E /* ThemeColors.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ThemeColors.swift; sourceTree = "<group>"; };
+		2914AA4162E4FD0C85BCBC3B /* SettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		29F4A34D40F2894F53B3B785 /* SystemInfo.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SystemInfo.swift; sourceTree = "<group>"; };
+		2BB26D8DBACFD99B5D409851 /* TodaySummarySection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TodaySummarySection.swift; sourceTree = "<group>"; };
+		2D14CA60EA2E957FBCA9A882 /* SystemInfoGrid.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SystemInfoGrid.swift; sourceTree = "<group>"; };
+		39ADA81FFF76A1E03EB8C649 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		3C985C9C872BE568112CC330 /* InverterStatus.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterStatus.swift; sourceTree = "<group>"; };
+		3FA9CE54C5B8B8597BBD252E /* SavingsReportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SavingsReportView.swift; sourceTree = "<group>"; };
+		4029CEFCAF5904DA89C284E5 /* InverterMetrics.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterMetrics.swift; sourceTree = "<group>"; };
+		49781AA8AF00CF7FE55FC388 /* ReportsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReportsView.swift; sourceTree = "<group>"; };
+		49E2FEF00681CEC4BFE7DCEF /* LiveDashboardView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveDashboardView.swift; sourceTree = "<group>"; };
+		4F92622765CC56842C6B1D7D /* YearReportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = YearReportView.swift; sourceTree = "<group>"; };
+		504A5A90FE538901641682E3 /* RefreshToolbarButton.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RefreshToolbarButton.swift; sourceTree = "<group>"; };
+		5373720D66CC84CAE2858CF1 /* CostSavings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CostSavings.swift; sourceTree = "<group>"; };
+		5D32814E4472F250CC1BD994 /* ReportsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReportsViewModel.swift; sourceTree = "<group>"; };
+		6192D36B324AF8CC5B630234 /* APIClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		6AC6733831630206998E059A /* CommandService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CommandService.swift; sourceTree = "<group>"; };
+		6BDE083EFC4E0D9197C940A4 /* Summary.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Summary.swift; sourceTree = "<group>"; };
+		774E69DC0587781F94D87334 /* SavingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SavingsView.swift; sourceTree = "<group>"; };
+		83DC80E5A4361CD8993CAFE1 /* AppEnvironment.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		84413A135AA5296F922C7389 /* RawReadingDetailSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RawReadingDetailSheet.swift; sourceTree = "<group>"; };
+		91EB5D109346F2EEFB90FFE3 /* StatTile.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StatTile.swift; sourceTree = "<group>"; };
+		93ADCC917A9BD74C6091ACFB /* NotificationCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationCoordinator.swift; sourceTree = "<group>"; };
+		9574DF3C1C6D81DC604FB4FE /* InverterService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterService.swift; sourceTree = "<group>"; };
+		9C15621057A335744415F91B /* MonthReportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MonthReportView.swift; sourceTree = "<group>"; };
+		9EED982DB4BA1B07404EA194 /* AppSettings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		ACDD48DF4885496A8C078885 /* LivePowerChartSection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LivePowerChartSection.swift; sourceTree = "<group>"; };
+		ACE33B213D30B2F82EC8FF1C /* PowerCardsGrid.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PowerCardsGrid.swift; sourceTree = "<group>"; };
+		AEE98069ED65F98D9B1C3663 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B13C8A14B17FC6830E993558 /* RawReadingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RawReadingsView.swift; sourceTree = "<group>"; };
+		B32A316BB618DB452520235E /* FlowDiagramView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowDiagramView.swift; sourceTree = "<group>"; };
+		B651452E813A5194A9C84D4C /* ReaderOutagesReportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReaderOutagesReportView.swift; sourceTree = "<group>"; };
+		BBAFAC4AE05C10DB3715E768 /* OutagesReportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OutagesReportView.swift; sourceTree = "<group>"; };
+		BEE05BD7559434AEF8DB3D8E /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		C7FDC64B2CEC0BA877A707B5 /* AuthService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		C94E769F74474CAD45736940 /* InverterMonitorApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterMonitorApp.swift; sourceTree = "<group>"; };
+		CDD2EA82E12BFAC6DEE40EDD /* DayReportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DayReportView.swift; sourceTree = "<group>"; };
+		D2A27677E6FD63A8F018886B /* LiveDashboardViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveDashboardViewModel.swift; sourceTree = "<group>"; };
+		D36AD9F22A7CFCEAA24864BC /* BatteryGauge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BatteryGauge.swift; sourceTree = "<group>"; };
+		DB238B6E38F9D35005F8E5A5 /* InverterConfig.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InverterConfig.swift; sourceTree = "<group>"; };
+		E09C2EF98B3AC701D57F8E7C /* MainTabView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		F7F5E71730555466B0B85927 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		045ADD92816BBE79EFA58321 /* Frameworks */ = {
+		7DF16BFE7011B7D275468183 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				73F0FC50563CBA4805121E6D /* Foundation.framework in Frameworks */,
+				7287C4007FCDDB43585F2CF9 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		0AE63F6E22BF420F7E2D0BD5 /* iOS */ = {
+		04D9AB1ABF2BE9A490E236EC = {
 			isa = PBXGroup;
 			children = (
-				EC16D9091E8625D977868A19 /* Foundation.framework */,
+				6D6283C8F26F04511C99B809 /* Products */,
+				6792B9E3E06872F77F008F0A /* Frameworks */,
+				1FC7A99375AC37283C4D8316 /* InverterMonitor */,
 			);
-			name = iOS;
 			sourceTree = "<group>";
 		};
-		19620A93DA465634FCBE78E8 /* Live */ = {
+		0BC3054D2CB24A32004024F7 /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				98AE638BDB6199D28971B64D /* BatteryGauge.swift */,
-				87CACDEF584A5A3AFD67258B /* ComponentDetailSheet.swift */,
-				68F45C8BB28FAEA2E046FDFD /* FlowDiagramView.swift */,
-				B8E9E9A828A65ACD1E74388A /* LiveDashboardView.swift */,
-				CD2096754FF6A9DA04A07E7D /* LivePowerChartSection.swift */,
-				E8A99134F2213CF69C9C5C9C /* PowerCardsGrid.swift */,
-				1B7CF99C1320149389EAA2A2 /* SystemInfoGrid.swift */,
-				73973B47FBC2C71B6B3C665C /* TodaySummarySection.swift */,
-			);
-			name = Live;
-			path = Live;
-			sourceTree = "<group>";
-		};
-		33ED9F2DE09AC35797B7FA88 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				DFA3B275AD9D00E1D0903509 /* InverterConfig.swift */,
-				9EAA1390894679621AF11BA9 /* InverterMetrics.swift */,
-				AD14B48951F0A278131E4B9B /* InverterStatus.swift */,
-				979690CB20F175008F3F4D50 /* Readings.swift */,
-				58FEB230263F2055851A57CA /* Summary.swift */,
-				645CAF218600D2B3FF3A3CDA /* SystemInfo.swift */,
+				5373720D66CC84CAE2858CF1 /* CostSavings.swift */,
+				DB238B6E38F9D35005F8E5A5 /* InverterConfig.swift */,
+				4029CEFCAF5904DA89C284E5 /* InverterMetrics.swift */,
+				3C985C9C872BE568112CC330 /* InverterStatus.swift */,
+				14846DF2E3C82BEB58783B80 /* Readings.swift */,
+				6BDE083EFC4E0D9197C940A4 /* Summary.swift */,
+				29F4A34D40F2894F53B3B785 /* SystemInfo.swift */,
 			);
 			name = Models;
 			path = Models;
 			sourceTree = "<group>";
 		};
-		3655DA7FAA8432C7B22E17D9 /* Shared */ = {
+		1FC7A99375AC37283C4D8316 /* InverterMonitor */ = {
 			isa = PBXGroup;
 			children = (
-				35A7E06AA94F404AA604526E /* RefreshToolbarButton.swift */,
-				8E3E3C00FEBD86A2EBF26270 /* StatTile.swift */,
-				461B1F8FA498875FD18E8C94 /* StatusPill.swift */,
-				9763BDE227BAC282DE30562F /* ThemeColors.swift */,
-			);
-			name = Shared;
-			path = Shared;
-			sourceTree = "<group>";
-		};
-		374C7276C41AF86C83A97925 /* Reports */ = {
-			isa = PBXGroup;
-			children = (
-				BE1079AE8F41E0ADA714E957 /* DayReportView.swift */,
-				3EA5E35A2F7A416F040E381E /* MonthReportView.swift */,
-				8CBF61538BACAAB84838FF50 /* OutagesReportView.swift */,
-				621CC731D49B7F1BDF266C8D /* RawReadingDetailSheet.swift */,
-				1856BF9AC049BDBC4EAD4011 /* RawReadingsView.swift */,
-				7831EA412970B5D04F00F020 /* ReportsView.swift */,
-				ECE73D706D09870A614828B4 /* YearReportView.swift */,
-			);
-			name = Reports;
-			path = Reports;
-			sourceTree = "<group>";
-		};
-		5D17835A91C27B61E5B06200 /* App */ = {
-			isa = PBXGroup;
-			children = (
-				593F55C78EA11AA113335F3F /* AppEnvironment.swift */,
-				C8AD81C65621CB315193C02E /* AppIntents */,
-				8B1204F32E49DFB56FD8E3F9 /* InverterMonitorApp.swift */,
-			);
-			name = App;
-			path = App;
-			sourceTree = "<group>";
-		};
-		5D43410326C5CCC90C63EB2C /* ViewModels */ = {
-			isa = PBXGroup;
-			children = (
-				FABFA4A5CC8FC29DE23762E3 /* AuthViewModel.swift */,
-				CA9F0CC0ED825601E6AABF59 /* LiveDashboardViewModel.swift */,
-				3BF77F03115AF112EC8E7D16 /* ReportsViewModel.swift */,
-			);
-			name = ViewModels;
-			path = ViewModels;
-			sourceTree = "<group>";
-		};
-		5DA295478415A42A07074588 /* InverterMonitor */ = {
-			isa = PBXGroup;
-			children = (
-				5D17835A91C27B61E5B06200 /* App */,
-				33ED9F2DE09AC35797B7FA88 /* Models */,
-				8473E7269672C7FF39A9DF20 /* Services */,
-				5D43410326C5CCC90C63EB2C /* ViewModels */,
-				A451778B8D4B8BB80423BCA8 /* Views */,
-				61C1F1B93B089AC028FA7AE9 /* Resources */,
+				6EFCE204F114DFC2FE9FFB76 /* App */,
+				0BC3054D2CB24A32004024F7 /* Models */,
+				8E3D78B18C598CD3DA66A343 /* Services */,
+				22EC18018959CCD922E4634E /* ViewModels */,
+				7F7F304501A6E8793F49201D /* Views */,
+				5CD8CF63006A938BED843E75 /* Resources */,
 			);
 			name = InverterMonitor;
 			path = InverterMonitor;
 			sourceTree = "<group>";
 		};
-		61C1F1B93B089AC028FA7AE9 /* Resources */ = {
+		22EC18018959CCD922E4634E /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
-				1065F8D504CF7DB52CC0F915 /* Info.plist */,
-				E7AC3722311C643C9E8FFD74 /* Assets.xcassets */,
+				012D8A822D29494235006883 /* AuthViewModel.swift */,
+				D2A27677E6FD63A8F018886B /* LiveDashboardViewModel.swift */,
+				5D32814E4472F250CC1BD994 /* ReportsViewModel.swift */,
+			);
+			name = ViewModels;
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		5CD8CF63006A938BED843E75 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				39ADA81FFF76A1E03EB8C649 /* Info.plist */,
+				AEE98069ED65F98D9B1C3663 /* Assets.xcassets */,
 			);
 			name = Resources;
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		8473E7269672C7FF39A9DF20 /* Services */ = {
+		6792B9E3E06872F77F008F0A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				F23E2F029A922E19D9F73D1A /* APIClient.swift */,
-				911D1E71F8F8168968D0B89A /* AppSettings.swift */,
-				406274EB862E0F925987D947 /* AuthService.swift */,
-				EE32935852D3B1B9C33DEA39 /* CommandService.swift */,
-				AB4CE148FC43F7A55C2F5E0B /* InverterService.swift */,
-				19BE8A8EA235C595E6EBCC9C /* NotificationCoordinator.swift */,
+				DF3F191140DA3D334A5D6753 /* iOS */,
 			);
-			name = Services;
-			path = Services;
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		A451778B8D4B8BB80423BCA8 /* Views */ = {
+		6D6283C8F26F04511C99B809 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				19620A93DA465634FCBE78E8 /* Live */,
-				40872A429217B0E5B8F8E8A3 /* LoginView.swift */,
-				27C858FB243332EB65A8D4AF /* MainTabView.swift */,
-				374C7276C41AF86C83A97925 /* Reports */,
-				1A5DE1B2F50C3AF6C5D77C4D /* RootView.swift */,
-				AE4868BD4252C87C4002A518 /* SettingsView.swift */,
-				3655DA7FAA8432C7B22E17D9 /* Shared */,
+				059A71377481B0901CD08E90 /* InverterMonitor.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6EFCE204F114DFC2FE9FFB76 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				83DC80E5A4361CD8993CAFE1 /* AppEnvironment.swift */,
+				AFA73D85CFDCF94D2DF2ACB8 /* AppIntents */,
+				C94E769F74474CAD45736940 /* InverterMonitorApp.swift */,
+			);
+			name = App;
+			path = App;
+			sourceTree = "<group>";
+		};
+		7F7F304501A6E8793F49201D /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				E81205F2252A71D14D990C53 /* Live */,
+				1D02E35542E1E654A8BF4882 /* LoginView.swift */,
+				E09C2EF98B3AC701D57F8E7C /* MainTabView.swift */,
+				B66C3344167CA44ED88B8B3D /* Reports */,
+				F7F5E71730555466B0B85927 /* RootView.swift */,
+				774E69DC0587781F94D87334 /* SavingsView.swift */,
+				2914AA4162E4FD0C85BCBC3B /* SettingsView.swift */,
+				DC0014C669E216FF3E7D8204 /* Shared */,
 			);
 			name = Views;
 			path = Views;
 			sourceTree = "<group>";
 		};
-		C8AD81C65621CB315193C02E /* AppIntents */ = {
+		8E3D78B18C598CD3DA66A343 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				7F4259984D5290E30EC1B0BB /* InverterIntents.swift */,
+				6192D36B324AF8CC5B630234 /* APIClient.swift */,
+				9EED982DB4BA1B07404EA194 /* AppSettings.swift */,
+				C7FDC64B2CEC0BA877A707B5 /* AuthService.swift */,
+				6AC6733831630206998E059A /* CommandService.swift */,
+				1B05D3AABFCC9B73C9547AD3 /* CredentialStore.swift */,
+				9574DF3C1C6D81DC604FB4FE /* InverterService.swift */,
+				93ADCC917A9BD74C6091ACFB /* NotificationCoordinator.swift */,
+			);
+			name = Services;
+			path = Services;
+			sourceTree = "<group>";
+		};
+		AFA73D85CFDCF94D2DF2ACB8 /* AppIntents */ = {
+			isa = PBXGroup;
+			children = (
+				05F8F030EFD11B0119E44CF4 /* InverterIntents.swift */,
 			);
 			name = AppIntents;
 			path = AppIntents;
 			sourceTree = "<group>";
 		};
-		E40BE2DADAB0EC993D40AE2A /* Products */ = {
+		B66C3344167CA44ED88B8B3D /* Reports */ = {
 			isa = PBXGroup;
 			children = (
-				B95376371094872D5B09F804 /* InverterMonitor.app */,
+				CDD2EA82E12BFAC6DEE40EDD /* DayReportView.swift */,
+				9C15621057A335744415F91B /* MonthReportView.swift */,
+				BBAFAC4AE05C10DB3715E768 /* OutagesReportView.swift */,
+				84413A135AA5296F922C7389 /* RawReadingDetailSheet.swift */,
+				B13C8A14B17FC6830E993558 /* RawReadingsView.swift */,
+				B651452E813A5194A9C84D4C /* ReaderOutagesReportView.swift */,
+				49781AA8AF00CF7FE55FC388 /* ReportsView.swift */,
+				3FA9CE54C5B8B8597BBD252E /* SavingsReportView.swift */,
+				4F92622765CC56842C6B1D7D /* YearReportView.swift */,
 			);
-			name = Products;
+			name = Reports;
+			path = Reports;
 			sourceTree = "<group>";
 		};
-		E7476A268C7B792482C0CFD4 = {
+		DC0014C669E216FF3E7D8204 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
-				E40BE2DADAB0EC993D40AE2A /* Products */,
-				F3B135429FBC3AF1D1AF8C11 /* Frameworks */,
-				5DA295478415A42A07074588 /* InverterMonitor */,
+				504A5A90FE538901641682E3 /* RefreshToolbarButton.swift */,
+				91EB5D109346F2EEFB90FFE3 /* StatTile.swift */,
+				03550F891DB18E23959677EB /* StatusPill.swift */,
+				278512777E1A004B8B25B53E /* ThemeColors.swift */,
 			);
+			name = Shared;
+			path = Shared;
 			sourceTree = "<group>";
 		};
-		F3B135429FBC3AF1D1AF8C11 /* Frameworks */ = {
+		DF3F191140DA3D334A5D6753 /* iOS */ = {
 			isa = PBXGroup;
 			children = (
-				0AE63F6E22BF420F7E2D0BD5 /* iOS */,
+				BEE05BD7559434AEF8DB3D8E /* Foundation.framework */,
 			);
-			name = Frameworks;
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		E81205F2252A71D14D990C53 /* Live */ = {
+			isa = PBXGroup;
+			children = (
+				D36AD9F22A7CFCEAA24864BC /* BatteryGauge.swift */,
+				0C66CB36AB131F8E6182C029 /* ComponentDetailSheet.swift */,
+				B32A316BB618DB452520235E /* FlowDiagramView.swift */,
+				49E2FEF00681CEC4BFE7DCEF /* LiveDashboardView.swift */,
+				ACDD48DF4885496A8C078885 /* LivePowerChartSection.swift */,
+				ACE33B213D30B2F82EC8FF1C /* PowerCardsGrid.swift */,
+				2D14CA60EA2E957FBCA9A882 /* SystemInfoGrid.swift */,
+				2BB26D8DBACFD99B5D409851 /* TodaySummarySection.swift */,
+			);
+			name = Live;
+			path = Live;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		E8E49D0734267E37B935C881 /* InverterMonitor */ = {
+		44B33402ABBADFFF41E4F618 /* InverterMonitor */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 220E16744F968BEB56BC18ED /* Build configuration list for PBXNativeTarget "InverterMonitor" */;
+			buildConfigurationList = 028D05FF4FEA6820E87DD8D6 /* Build configuration list for PBXNativeTarget "InverterMonitor" */;
 			buildPhases = (
-				E6A43394AC39EF24F61D805A /* Sources */,
-				045ADD92816BBE79EFA58321 /* Frameworks */,
-				28A449783B58B041E8D41430 /* Resources */,
+				874A6BCF8F97F6DA2D4824CF /* Sources */,
+				7DF16BFE7011B7D275468183 /* Frameworks */,
+				C283A5BD7C90091B33198292 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -303,20 +318,20 @@
 			);
 			name = InverterMonitor;
 			productName = InverterMonitor;
-			productReference = B95376371094872D5B09F804 /* InverterMonitor.app */;
+			productReference = 059A71377481B0901CD08E90 /* InverterMonitor.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		D5E7D7F6EE93AF0438C3CF95 /* Project object */ = {
+		545CBB835C48624930B62FF3 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 1540;
 				LastUpgradeCheck = 1540;
 				ORGANIZATIONNAME = "Bilal Ahmad";
 			};
-			buildConfigurationList = 07EC503D03457073D1A2C27F /* Build configuration list for PBXProject "InverterMonitor" */;
+			buildConfigurationList = D4151F8345CC80D507B8114C /* Build configuration list for PBXProject "InverterMonitor" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -324,82 +339,87 @@
 				en,
 				Base,
 			);
-			mainGroup = E7476A268C7B792482C0CFD4;
+			mainGroup = 04D9AB1ABF2BE9A490E236EC;
 			minimizedProjectReferenceProxies = 0;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = E40BE2DADAB0EC993D40AE2A /* Products */;
+			productRefGroup = 6D6283C8F26F04511C99B809 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				E8E49D0734267E37B935C881 /* InverterMonitor */,
+				44B33402ABBADFFF41E4F618 /* InverterMonitor */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		28A449783B58B041E8D41430 /* Resources */ = {
+		C283A5BD7C90091B33198292 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A0D5F42E3F2260FEF56B94C1 /* Assets.xcassets in Resources */,
+				29DA19D312FE465F5DDC9243 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		E6A43394AC39EF24F61D805A /* Sources */ = {
+		874A6BCF8F97F6DA2D4824CF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				070140D03D3D392A332A0F5D /* AppEnvironment.swift in Sources */,
-				D59FA0C51C42B4C068D568A7 /* InverterIntents.swift in Sources */,
-				046AA72CF0C38D197A96F1DC /* InverterMonitorApp.swift in Sources */,
-				C560C824CA1789ADF73EF084 /* InverterConfig.swift in Sources */,
-				7993ED3F284FBEC9DF38E3E1 /* InverterMetrics.swift in Sources */,
-				111ED052CDC38B45FBFFB827 /* InverterStatus.swift in Sources */,
-				BBC750BEC5C9281FD51DDBD8 /* Readings.swift in Sources */,
-				61C72C91D4254A0883641C54 /* Summary.swift in Sources */,
-				D6798CEF3193D66843ACC640 /* SystemInfo.swift in Sources */,
-				52FA22F05A3F357F34B7C261 /* APIClient.swift in Sources */,
-				C0676ABEBA45700DAD39740F /* AppSettings.swift in Sources */,
-				05F759B653E3261263551CAE /* AuthService.swift in Sources */,
-				82C15D5BF001B812DDFD81D4 /* CommandService.swift in Sources */,
-				0585E0A0D4D02184D70322FC /* InverterService.swift in Sources */,
-				8040D946E1E5A6CC2D510D6C /* NotificationCoordinator.swift in Sources */,
-				E9E836A96F4DCFE07B9DA1C5 /* AuthViewModel.swift in Sources */,
-				68AE4EDA9FC5886A0FBF6C23 /* LiveDashboardViewModel.swift in Sources */,
-				F0DF2761FEC25B668622C6A9 /* ReportsViewModel.swift in Sources */,
-				A9B028A3D48B619ED957C04A /* BatteryGauge.swift in Sources */,
-				E917BF0DCE33B4E45E0A8707 /* ComponentDetailSheet.swift in Sources */,
-				9950EE3EED951A139AA000A6 /* FlowDiagramView.swift in Sources */,
-				340BF03E6F216EA71737FCA7 /* LiveDashboardView.swift in Sources */,
-				1B21F5562CA126C2DC2A512B /* LivePowerChartSection.swift in Sources */,
-				9FB7C2FE7E1FAADDB74E866C /* PowerCardsGrid.swift in Sources */,
-				BE8C2C458CC732C1A2524BCE /* SystemInfoGrid.swift in Sources */,
-				AF90533EC85C253FBE326523 /* TodaySummarySection.swift in Sources */,
-				FBC77A65E0A14C170C88EF94 /* LoginView.swift in Sources */,
-				612489421663E520E939892F /* MainTabView.swift in Sources */,
-				94E5BF346AD9FD45BD1A7E6C /* DayReportView.swift in Sources */,
-				A6F4B8FA1269073E927446FD /* MonthReportView.swift in Sources */,
-				34BE4B190BCA8C818014872E /* OutagesReportView.swift in Sources */,
-				603367213F211C09226E52EC /* RawReadingDetailSheet.swift in Sources */,
-				61112771326BC5A821EF1745 /* RawReadingsView.swift in Sources */,
-				33C0A0FE27EC3D621F9F3390 /* ReportsView.swift in Sources */,
-				24FC62C1D350459DDC457F8F /* YearReportView.swift in Sources */,
-				15C5F633D80B0645012386D4 /* RootView.swift in Sources */,
-				C26AA6B593CA37C6D529D0F2 /* SettingsView.swift in Sources */,
-				218DD87B73272E2CC7D9AF13 /* RefreshToolbarButton.swift in Sources */,
-				8805A0E5143A6EEC3B2A5802 /* StatTile.swift in Sources */,
-				B50595C565F6BECCDEB41265 /* StatusPill.swift in Sources */,
-				FD64289A3952CDDA8136B471 /* ThemeColors.swift in Sources */,
+				6270E900E2464C5D5ECDAB58 /* AppEnvironment.swift in Sources */,
+				B759F7F6B20728A2ABE53F1E /* InverterIntents.swift in Sources */,
+				64D05A8F0A34B9C5C40042F0 /* InverterMonitorApp.swift in Sources */,
+				5208FA369592FAD90D181AB3 /* CostSavings.swift in Sources */,
+				A5F39EE06EB45010E74A88C7 /* InverterConfig.swift in Sources */,
+				B429C0835B7ECF8B2A6C3D32 /* InverterMetrics.swift in Sources */,
+				9FE3CDC8F26B23DF072F672E /* InverterStatus.swift in Sources */,
+				2D684780E41968BE988CAF88 /* Readings.swift in Sources */,
+				DA594B1D6E4348475743787E /* Summary.swift in Sources */,
+				2FEE53B6E1B228BDF127777D /* SystemInfo.swift in Sources */,
+				20E9B7D954AD77161FC801E6 /* APIClient.swift in Sources */,
+				9BFC1EA156AD5B928E66023A /* AppSettings.swift in Sources */,
+				42D91DF721BE345B569FBCD0 /* AuthService.swift in Sources */,
+				4ABB46AA1CD6C4AF1C72789E /* CommandService.swift in Sources */,
+				6C56413CE4A6BE0AED55F245 /* CredentialStore.swift in Sources */,
+				A8CB9E5B8B3944B8B18DAAC7 /* InverterService.swift in Sources */,
+				2841D344643F7F60FC9F82D1 /* NotificationCoordinator.swift in Sources */,
+				3751801633EA7FDAF74EBF14 /* AuthViewModel.swift in Sources */,
+				0CFB3A67D074233175D46304 /* LiveDashboardViewModel.swift in Sources */,
+				5EC5BADDAD2E0BCA621F248B /* ReportsViewModel.swift in Sources */,
+				E5A2EC47540538C6727B3DC2 /* BatteryGauge.swift in Sources */,
+				C6A855D6416055D28A79B31A /* ComponentDetailSheet.swift in Sources */,
+				FC9829456DBC8DC0D3BC38E4 /* FlowDiagramView.swift in Sources */,
+				413F28DD70FBC58D46BD052D /* LiveDashboardView.swift in Sources */,
+				C5A9A3B4F489973DDEC5F468 /* LivePowerChartSection.swift in Sources */,
+				E74AFB1DD9F8C1DC90A066D7 /* PowerCardsGrid.swift in Sources */,
+				13B74CBD2F396344EC8E17F2 /* SystemInfoGrid.swift in Sources */,
+				33309E680E3AEBF4FEA385BE /* TodaySummarySection.swift in Sources */,
+				A97840FE57F3BD2D7B5347A5 /* LoginView.swift in Sources */,
+				CC13324A1571E251208106C3 /* MainTabView.swift in Sources */,
+				26A71F80E4A429E398960E30 /* DayReportView.swift in Sources */,
+				F794F22712206589B536CDF2 /* MonthReportView.swift in Sources */,
+				1655B9666A607B88357E4C1A /* OutagesReportView.swift in Sources */,
+				01130D02A40C22F850F9AFEB /* RawReadingDetailSheet.swift in Sources */,
+				916A769F1425817FD99385DF /* RawReadingsView.swift in Sources */,
+				C835B6C710DAF3604FA6CE7C /* ReaderOutagesReportView.swift in Sources */,
+				03DA5A955315AE336F535126 /* ReportsView.swift in Sources */,
+				84D7AD538459D636EDD5BEF4 /* SavingsReportView.swift in Sources */,
+				42F05C4962E6D2047CBED04F /* YearReportView.swift in Sources */,
+				19A8E6952F5145EF6963E60D /* RootView.swift in Sources */,
+				C45F44E7F1295C21145301C1 /* SavingsView.swift in Sources */,
+				B00D08F23356C55F8F3D8B2A /* SettingsView.swift in Sources */,
+				1895178B4BE4162F38E4D1D9 /* RefreshToolbarButton.swift in Sources */,
+				CBC72F11FE628E1B72FC1E62 /* StatTile.swift in Sources */,
+				2F2749CC61F5CF4C7E421142 /* StatusPill.swift in Sources */,
+				1DC855A2C89B001A35C98C47 /* ThemeColors.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		0CDA516B78DBDF3E15A2F8E7 /* Release */ = {
+		A61CA55F5E3620B54E67A7A8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -453,7 +473,40 @@
 			};
 			name = Release;
 		};
-		0E9BF1510FA20CE7EC08BDA2 /* Debug */ = {
+		AC1EC11BBE3E99CA37B1ED55 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = NO;
+				CODE_SIGNING_ALLOWED = YES;
+				CODE_SIGNING_REQUIRED = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = QBJ2H95LXT;
+				ENABLE_PREVIEWS = YES;
+				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = InverterMonitor/Resources/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.bilalahmad.InverterMonitor;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B5BE879726CCD325791BC449 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -514,7 +567,7 @@
 			};
 			name = Debug;
 		};
-		4229D34DFC076A01F763B5C8 /* Debug */ = {
+		DDFFE300F6EB6CA6C5D9CB2A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -525,7 +578,7 @@
 				CODE_SIGNING_REQUIRED = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 6RWWV9NFH8;
+				DEVELOPMENT_TEAM = QBJ2H95LXT;
 				ENABLE_PREVIEWS = YES;
 				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -546,61 +599,28 @@
 			};
 			name = Debug;
 		};
-		AEAC9F4385D8524030258D25 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = NO;
-				CODE_SIGNING_ALLOWED = YES;
-				CODE_SIGNING_REQUIRED = YES;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 6RWWV9NFH8;
-				ENABLE_PREVIEWS = YES;
-				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = InverterMonitor/Resources/Info.plist;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = com.bilalahmad.InverterMonitor;
-				SDKROOT = iphoneos;
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
-				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		07EC503D03457073D1A2C27F /* Build configuration list for PBXProject "InverterMonitor" */ = {
+		028D05FF4FEA6820E87DD8D6 /* Build configuration list for PBXNativeTarget "InverterMonitor" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				0E9BF1510FA20CE7EC08BDA2 /* Debug */,
-				0CDA516B78DBDF3E15A2F8E7 /* Release */,
+				AC1EC11BBE3E99CA37B1ED55 /* Release */,
+				DDFFE300F6EB6CA6C5D9CB2A /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		220E16744F968BEB56BC18ED /* Build configuration list for PBXNativeTarget "InverterMonitor" */ = {
+		D4151F8345CC80D507B8114C /* Build configuration list for PBXProject "InverterMonitor" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AEAC9F4385D8524030258D25 /* Release */,
-				4229D34DFC076A01F763B5C8 /* Debug */,
+				B5BE879726CCD325791BC449 /* Debug */,
+				A61CA55F5E3620B54E67A7A8 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = D5E7D7F6EE93AF0438C3CF95 /* Project object */;
+	rootObject = 545CBB835C48624930B62FF3 /* Project object */;
 }

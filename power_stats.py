@@ -552,6 +552,8 @@ class PowerStats:
             'solar_peak_w': round(stats.get('solar_max') or 0, 1),
             'load_peak_w': round(stats.get('load_max') or 0, 1),
             'grid_peak_w': round(stats.get('grid_max') or 0, 1),
+            # Max battery throughput (charge OR discharge) — stored as max abs(power).
+            'battery_peak_w': round(stats.get('battery_max') or 0, 1),
             'pf_avg': round(stats.get('pf_avg') or 0, 3),
             'temperature_max': round(stats.get('temperature_max') or 0, 1),
             'self_sufficiency': round(self_sufficiency, 3),
@@ -715,6 +717,9 @@ class PowerStats:
             return {
                 'minutes': minutes,
                 'bucket_seconds': bucket_seconds,
+                # Server epoch so the live chart can measure client/server clock skew and
+                # render historic (server-time) buckets and live (socket) points in one domain.
+                'now_ms': int(time.time() * 1000),
                 'points': [{
                     'timestamp': row['bucket'],
                     'solar_avg': r(row['solar_avg']),   'solar_min': r(row['solar_min']),   'solar_max': r(row['solar_max']),
@@ -803,7 +808,6 @@ class PowerStats:
             outages = []
             current_start = None
             last_ts = None
-            gap_threshold = 60  # seconds — split if reading gap exceeds this
             for ts, voltage in rows:
                 is_down = (voltage or 0) < min_voltage
                 if is_down:
@@ -821,8 +825,6 @@ class PowerStats:
                             })
                     current_start = None
                     last_ts = None
-                if last_ts is not None and (ts - last_ts) > gap_threshold and is_down:
-                    pass  # handled above
             if current_start is not None and last_ts is not None:
                 duration = last_ts - current_start
                 if duration >= min_duration_seconds:
@@ -1012,6 +1014,7 @@ class PowerStats:
                     datetime(timestamp, 'unixepoch', 'localtime') as timestamp_formatted,
                     solar_power,
                     grid_power,
+                    grid_voltage,
                     load_power,
                     battery_power,
                     battery_percentage,
@@ -1028,11 +1031,14 @@ class PowerStats:
                         'timestamp_formatted': row['timestamp_formatted'],
                         'solar_power': round(row['solar_power'] or 0, 1),
                         'grid_power': round(row['grid_power'] or 0, 1),
-                        'grid_voltage': 220,
+                        # Real per-reading grid voltage (was previously hardcoded to 220).
+                        'grid_voltage': round(row['grid_voltage'] or 0, 1),
                         'battery_percentage': round(row['battery_percentage'] or 0, 1),
                         'load_power': round(row['load_power'] or 0, 1),
                         'battery_power': round(row['battery_power'] or 0, 1),
-                        'temperature': 35,
+                        # No per-reading temperature column exists (only daily_stats.temperature_max),
+                        # so report null rather than fabricating a constant 35°C.
+                        'temperature': None,
                         'duration_ms': round(row['duration_ms'] or 0, 1),
                         'timestamp': row['timestamp'],
                     })

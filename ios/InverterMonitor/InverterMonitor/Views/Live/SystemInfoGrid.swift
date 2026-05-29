@@ -55,8 +55,14 @@ struct SystemInfoGrid: View {
             Text(footnote)
                 .font(.caption2)
                 .foregroundStyle(Palette.subtleText)
+                .lineLimit(2, reservesSpace: true)
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Fixed minHeight so numericText morphs on the value + the optional
+        // second line of footnote can't alter row height at the LazyVGrid
+        // level. Stable row height is what keeps the scroll view from
+        // re-measuring during a bottom-edge bounce.
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
         .padding(12)
         .card()
         .accessibilityElement(children: .combine)

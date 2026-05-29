@@ -139,6 +139,7 @@
                 <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
                     <div class="text-green-300 text-xs">Bat. Charge / Discharge</div>
                     <div class="text-white text-base font-semibold"><span id="day-bat-charge">0</span> / <span id="day-bat-discharge">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
+                    <div class="text-white/50 text-[10px] mt-1">Peak <span id="day-bat-peak">0</span>W</div>
                 </div>
                 <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
                     <div class="text-emerald-300 text-xs">Self-Sufficiency</div>
@@ -483,10 +484,13 @@
                 const points = r.points || [];
                 const bucketMs = ((r && r.bucket_seconds) || 60) * 1000;
                 const gapMs = Math.max(120000, bucketMs * 3);
-                const peak = (key) => points.reduce((m, p) => Math.max(m, p[key] || 0), 0);
-                document.getElementById('day-solar-peak').textContent = Math.round(peak('solar_power'));
-                document.getElementById('day-grid-peak').textContent = Math.round(peak('grid_power'));
-                document.getElementById('day-load-peak').textContent = Math.round(peak('load_power'));
+                // True instantaneous peaks come from daily_stats.*_max via /summary (s.*_peak_w).
+                // The /day-readings points are 60s time-AVERAGES, so reducing over them under-reports
+                // real spikes — they're only used for the chart series below.
+                document.getElementById('day-solar-peak').textContent = Math.round(s.solar_peak_w || 0);
+                document.getElementById('day-grid-peak').textContent = Math.round(s.grid_peak_w || 0);
+                document.getElementById('day-load-peak').textContent = Math.round(s.load_peak_w || 0);
+                document.getElementById('day-bat-peak').textContent = Math.round(s.battery_peak_w || 0);
 
                 const toSeries = (key) => withGaps(points.map((p) => ({ x: p.timestamp * 1000, y: p[key] })), gapMs);
                 dayChart.data.datasets[0].data = toSeries('solar_power');
