@@ -301,7 +301,9 @@ def _set_output_frequency(value, cfg):
             'response': out.strip()[:200]}
 
 
-def _voltage_setter(param, prefix, label, allow_zero=False):
+def _voltage_setter(param, prefix, label, allow_zero=False, profile=False):
+    """`profile=True` marks a charge-profile voltage (bulk/float/cut-off). Those are factory-locked
+    unless the battery type is User, so a NAK there gets a clearer, actionable error."""
     def setter(value, cfg):
         try:
             v = float(value)
@@ -315,13 +317,21 @@ def _voltage_setter(param, prefix, label, allow_zero=False):
                     f"{label} {v}V is outside the plausible {lo:.1f}–{hi:.1f}V range for a "
                     f"{nominal:.0f}V battery system")
         cmd = f"{prefix}{_fmt_voltage(v)}"
-        out = _run_write_command(cmd, f"{label} {v}V")
+        try:
+            out = _run_write_command(cmd, f"{label} {v}V")
+        except Exception:
+            bt = (cfg or {}).get('battery_type')
+            if profile and bt and str(bt).strip().lower() not in ('user', 'user-defined'):
+                raise RuntimeError(
+                    f"{label} is locked while Battery Type is '{bt}'. Charge-profile voltages "
+                    f"(bulk / float / cut-off) are only editable when Battery Type is set to User.")
+            raise
         return {'param': param, 'label': label, 'command': cmd, 'value': _fmt_voltage(v),
                 'response': out.strip()[:200]}
     return setter
 
 
-def _current_setter(param, single_prefix, parallel_prefix, selectable_key, label):
+def _current_setter(param, prefix, selectable_key, label):
     def setter(value, cfg):
         try:
             amps = int(round(float(value)))
@@ -329,7 +339,7 @@ def _current_setter(param, single_prefix, parallel_prefix, selectable_key, label
             raise ValueError(f"{label} must be a whole number of amps")
         # The inverter advertises exactly which currents it accepts (QMCHGCR / QMUCHGCR). Only
         # write a value that's on that list — never guess one the hardware didn't offer. If we
-        # couldn't read the list, refuse rather than risk a malformed/mis-addressed command.
+        # couldn't read the list, refuse rather than risk a malformed command.
         selectable = get_selectable_currents().get(selectable_key) or []
         if not selectable:
             raise ValueError(
@@ -337,18 +347,12 @@ def _current_setter(param, single_prefix, parallel_prefix, selectable_key, label
                 f"(QMCHGCR/QMUCHGCR) — refusing to guess a charge-current command.")
         if amps not in selectable:
             raise ValueError(f"{label} {amps}A isn't selectable on this inverter. Allowed: {selectable}")
-        # Wire format: in the 3-digit MCHGC/MUCHGC field the LEADING digit doubles as a parallel
-        # unit address on multi-unit firmware (e.g. MCHGC160 = unit 1 @ 60A). For amps < 100 the
-        # zero-padded value (e.g. "060") has a leading 0, so it reads unambiguously as
-        # "unit 0 / 60A" under both the single-unit and parallel interpretations. For amps >= 100
-        # the leading digit is non-zero and would be mis-read as a unit address, so we must use the
-        # explicit 4-digit parallel command MNCHGC<unit><nnn> (unit 0 = master).
-        if amps < 100:
-            cmd = f"{single_prefix}{amps:03d}"
-        elif parallel_prefix:
-            cmd = f"{parallel_prefix}0{amps:03d}"
-        else:
-            raise ValueError(f"{label} {amps}A is not supported by this control")
+        # Wire format verified live against PI30 firmware 28.14: total charge current is
+        # MNCHGC<nnn> and utility charge current is MUCHGC<nnn> — the value is a zero-padded
+        # 3-digit field taken directly (no parallel-unit prefix digit; MNCHGC0030 / MCHGC030 NAK).
+        # The selectable-list check above bounds `amps` to values the inverter offered (010..120),
+        # so the 3 digits are always the literal current.
+        cmd = f"{prefix}{amps:03d}"
         out = _run_write_command(cmd, f"{label} {amps}A")
         return {'param': param, 'label': label, 'command': cmd, 'value': amps,
                 'response': out.strip()[:200]}
@@ -358,13 +362,13 @@ def _current_setter(param, single_prefix, parallel_prefix, selectable_key, label
 CONFIG_PARAM_SETTERS = {
     'battery_type': _set_battery_type,
     'output_frequency': _set_output_frequency,
-    'cutoff_voltage':           _voltage_setter('cutoff_voltage', 'PSDV', 'Battery cut-off voltage'),
+    'cutoff_voltage':           _voltage_setter('cutoff_voltage', 'PSDV', 'Battery cut-off voltage', profile=True),
     'back_to_grid_voltage':     _voltage_setter('back_to_grid_voltage', 'PBCV', 'Back-to-grid (recharge) voltage'),
     'back_to_battery_voltage':  _voltage_setter('back_to_battery_voltage', 'PBDV', 'Back-to-battery (re-discharge) voltage', allow_zero=True),
-    'bulk_voltage':             _voltage_setter('bulk_voltage', 'PCVV', 'Bulk / absorption charge voltage'),
-    'float_voltage':            _voltage_setter('float_voltage', 'PBFT', 'Float charge voltage'),
-    'max_charge_current':       _current_setter('max_charge_current', 'MCHGC', 'MNCHGC', 'max_charging_current', 'Max charge current'),
-    'max_ac_charge_current':    _current_setter('max_ac_charge_current', 'MUCHGC', None, 'max_ac_charging_current', 'Max AC (utility) charge current'),
+    'bulk_voltage':             _voltage_setter('bulk_voltage', 'PCVV', 'Bulk / absorption charge voltage', profile=True),
+    'float_voltage':            _voltage_setter('float_voltage', 'PBFT', 'Float charge voltage', profile=True),
+    'max_charge_current':       _current_setter('max_charge_current', 'MNCHGC', 'max_charging_current', 'Max charge current'),
+    'max_ac_charge_current':    _current_setter('max_ac_charge_current', 'MUCHGC', 'max_ac_charging_current', 'Max AC (utility) charge current'),
 }
 
 

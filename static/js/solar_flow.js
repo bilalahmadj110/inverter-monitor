@@ -341,14 +341,16 @@ class SolarFlowDashboard {
 
     // ---- editable-parameter row builders (battery / inverter settings) ----------------------
 
-    voltageRow(label, param, cur) {
+    voltageRow(label, param, cur, lockedNote = null) {
         const now = (cur != null && cur !== '') ? `<span class="cur">now ${cur} V</span>` : '';
         const val = (cur != null && cur !== '') ? cur : '';
+        const dis = lockedNote ? 'disabled' : '';
+        const lock = lockedNote ? `<span class="cur"><i class="fas fa-lock"></i> ${lockedNote}</span>` : '';
         return `
             <div class="param-row">
-                <span class="k">${label}${now}</span>
-                <input type="number" step="0.1" min="0" inputmode="decimal" data-param-input="${param}" value="${val}">
-                <button class="apply" data-action="set-param" data-param="${param}">Set</button>
+                <span class="k">${label}${now}${lock}</span>
+                <input type="number" step="0.1" min="0" inputmode="decimal" data-param-input="${param}" value="${val}" ${dis}>
+                <button class="apply" data-action="set-param" data-param="${param}" ${dis}>Set</button>
             </div>`;
     }
 
@@ -563,6 +565,9 @@ class SolarFlowDashboard {
         if (component === 'battery') {
             const b = m.battery || {};
             const current = c.charger_priority || '—';
+            // Bulk / float / cut-off voltages are factory-locked unless battery type is User.
+            const isUserBatt = ['user', 'user-defined'].includes(String(c.battery_type || '').toLowerCase());
+            const profileLock = isUserBatt ? null : 'set Battery Type = User';
             const opts = [
                 { key: 'SOL_ONLY',  name: 'Only solar',       desc: 'Grid is never allowed to charge' },
                 { key: 'SOL_FIRST', name: 'Solar first',      desc: 'Solar charges; grid tops up if needed' },
@@ -599,11 +604,11 @@ class SolarFlowDashboard {
                         ${this.batteryTypeRow(c.battery_type)}
                         ${this.currentRow('Max Charge Current', 'max_charge_current', 'max_charging_current', c.max_charging_current)}
                         ${this.currentRow('Max AC Charge Current', 'max_ac_charge_current', 'max_ac_charging_current', c.max_ac_charging_current)}
-                        ${this.voltageRow('Cut-off Voltage', 'cutoff_voltage', c.battery_under_voltage)}
+                        ${this.voltageRow('Cut-off Voltage', 'cutoff_voltage', c.battery_under_voltage, profileLock)}
                         ${this.voltageRow('Back to Grid (recharge)', 'back_to_grid_voltage', c.battery_recharge_voltage)}
                         ${this.voltageRow('Back to Battery (re-discharge)', 'back_to_battery_voltage', c.battery_redischarge_voltage)}
-                        ${this.voltageRow('Bulk / Absorption Voltage', 'bulk_voltage', c.battery_bulk_charge_voltage)}
-                        ${this.voltageRow('Float Voltage', 'float_voltage', c.battery_float_charge_voltage)}
+                        ${this.voltageRow('Bulk / Absorption Voltage', 'bulk_voltage', c.battery_bulk_charge_voltage, profileLock)}
+                        ${this.voltageRow('Float Voltage', 'float_voltage', c.battery_float_charge_voltage, profileLock)}
                     </section>
                     ${this.buildPasswordFieldHTML()}
                     <div id="modal-toast"></div>
