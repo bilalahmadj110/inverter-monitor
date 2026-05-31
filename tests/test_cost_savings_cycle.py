@@ -77,9 +77,15 @@ def test_slab_projection_runs_on_billing_cycle(tmp_db, seed_daily):
 
 def test_compute_today_marginal_rate_keys_off_cycle(tmp_db, seed_daily):
     # today = 10 Mar 2026 → cycle = 27 Feb .. 26 Mar 2026.
-    seed_daily("2026-02-05", grid_wh=150_000)  # calendar Feb, before cycle → must NOT count
-    seed_daily("2026-02-27", grid_wh=30_000)   # in cycle
-    seed_daily("2026-03-05", grid_wh=40_000)   # in cycle → cycle-to-date = 70 kWh
+    # Seed so cycle-to-date and the (old) calendar-March total land in DIFFERENT
+    # slabs — otherwise the test would silently pass even if the code reverted
+    # to calendar-month logic. The discriminator is the post-`today` March row:
+    # the cycle code excludes it (min(today, end)); a calendar-month sum wouldn't.
+    seed_daily("2026-02-05", grid_wh=100_000)  # pre-cycle → excluded either way
+    seed_daily("2026-02-27", grid_wh=30_000)   # in cycle, NOT in calendar March
+    seed_daily("2026-03-05", grid_wh=40_000)   # in cycle and in March, on/before today
+    seed_daily("2026-03-20", grid_wh=200_000)  # after today → cycle excludes it,
+                                               # calendar-March (old code) would not
 
     class _FakeStats:
         def __init__(self, db_path):
@@ -93,8 +99,11 @@ def test_compute_today_marginal_rate_keys_off_cycle(tmp_db, seed_daily):
         _FakeStats(tmp_db), cfg, today=date(2026, 3, 10)
     )
 
-    expected_rate = lesco_tariff.marginal_rate(70.0, cfg)   # cycle-to-date grid
-    calendar_rate = lesco_tariff.marginal_rate(220.0, cfg)  # if 150 kWh wrongly counted
+    # Cycle-to-date = 30 + 40 = 70 kWh → unprotected slab 1-100 (Rs 22.44/kWh).
+    expected_rate = lesco_tariff.marginal_rate(70.0, cfg)
+    # Old calendar-March path totals 40 + 200 = 240 kWh → slab 201-300
+    # (Rs 33.10/kWh): a different slab, so the two rates must differ.
+    calendar_rate = lesco_tariff.marginal_rate(240.0, cfg)
     assert expected_rate != calendar_rate
     assert result["marginal_rate_pkr_per_kwh"] == expected_rate
     assert result["solar_kwh"] == 5.0
