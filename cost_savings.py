@@ -20,18 +20,11 @@ import logging
 from datetime import datetime, date
 from typing import Any
 
+import fesco_bill
 import lesco_tariff
 
 
 logger = logging.getLogger(__name__)
-
-
-def _days_in_month(year: int, month: int) -> int:
-    if month == 12:
-        nxt = date(year + 1, 1, 1)
-    else:
-        nxt = date(year, month + 1, 1)
-    return (nxt - date(year, month, 1)).days
 
 
 def _month_energy_kwh(db_path: str, month: str) -> dict[str, float]:
@@ -125,21 +118,28 @@ def compute_savings_for_cycle(
     }
 
 
-def compute_today(stats_manager, config: dict[str, Any]) -> dict[str, Any]:
-    """Today's savings, valued at the *current marginal rate* — i.e. the rate
-    of the next grid unit you'd consume given the month's grid usage so far.
-    This correctly captures the slab cliff: if you're at 199 units, the next
+def compute_today(
+    stats_manager, config: dict[str, Any], today: date | None = None
+) -> dict[str, Any]:
+    """Today's savings, valued at the *current marginal rate* — i.e. the rate of
+    the next grid unit you'd consume given the grid usage so far *in the current
+    FESCO billing cycle* (the 26th→26th window, not the calendar month). This
+    correctly captures the slab cliff: if the cycle is at 199 units, the next
     unit is worth Rs 28+ instead of Rs 22, so today's solar is worth more."""
-    today = datetime.now().strftime('%Y-%m-%d')
-    month = today[:7]
-    day_energy = _day_energy_kwh(stats_manager, today)
-    month_energy = _month_energy_kwh(stats_manager.db_path, month)
+    today = today or date.today()
+    today_str = today.isoformat()
+    day_energy = _day_energy_kwh(stats_manager, today_str)
 
-    rate_now = lesco_tariff.marginal_rate(month_energy["grid_kwh"], config)
+    # Grid units used so far in the current billing cycle (not the calendar
+    # month) set the marginal rate, keeping this in step with the FESCO Bill page.
+    start, end = fesco_bill.compute_cycle_boundaries(today, config, stats_manager.db_path)
+    cycle_energy = fesco_bill.aggregate_cycle(start, min(today, end), stats_manager.db_path)
+
+    rate_now = lesco_tariff.marginal_rate(cycle_energy["grid_kwh"], config)
     today_savings = day_energy["solar_kwh"] * rate_now
 
     return {
-        "date": today,
+        "date": today_str,
         "solar_kwh": round(day_energy["solar_kwh"], 3),
         "grid_kwh":  round(day_energy["grid_kwh"], 3),
         "load_kwh":  round(day_energy["load_kwh"], 3),
@@ -242,27 +242,29 @@ def compute_payback(install_cost_pkr: float, avg_daily_savings_pkr: float) -> di
     }
 
 
-def compute_slab_projection(db_path: str, config: dict[str, Any]) -> dict[str, Any]:
-    """For the *current* billing month, project month-end grid kWh assuming the
-    same daily-average grid usage continues. Identify the slab the projection
-    lands in and how many kWh stand between current usage and the next cliff.
+def compute_slab_projection(
+    db_path: str, config: dict[str, Any], today: date | None = None
+) -> dict[str, Any]:
+    """For the *current FESCO billing cycle* (the 26th→26th window, not the
+    calendar month), project cycle-end grid kWh assuming the same daily-average
+    grid usage continues. Identify the slab the projection lands in and how many
+    kWh stand between current usage and the next cliff.
 
     For unprotected consumers this is the single most actionable number on the
     dashboard: crossing 200 kWh roughly doubles your per-unit price.
-    """
-    today = date.today()
-    month = today.strftime('%Y-%m')
-    energy = _month_energy_kwh(db_path, month)
-    days_in_month = _days_in_month(today.year, today.month)
-    days_elapsed = today.day
-    days_remaining = max(0, days_in_month - days_elapsed)
 
-    grid_so_far = energy["grid_kwh"]
-    daily_grid_rate = grid_so_far / days_elapsed if days_elapsed > 0 else 0
-    projected_month_end = grid_so_far + daily_grid_rate * days_remaining
+    Run-rate math (boundaries, units-so-far, projected units) is delegated to
+    fesco_bill.forecast_open_cycle so the savings page and the FESCO Bill page
+    project off exactly the same cycle.
+    """
+    today = today or date.today()
+    forecast = fesco_bill.forecast_open_cycle(today, config, db_path)
+
+    grid_so_far = forecast["units_so_far"]
+    projected_cycle_end = forecast["projected_units"]
 
     bill_now = lesco_tariff.compute_bill(grid_so_far, config)
-    bill_projected = lesco_tariff.compute_bill(projected_month_end, config)
+    bill_projected = forecast["forecast_bill"]  # compute_bill(projected_units, cfg)
 
     slab_now = bill_now.get("slab_info") or {}
     slab_proj = bill_projected.get("slab_info") or {}
@@ -281,16 +283,20 @@ def compute_slab_projection(db_path: str, config: dict[str, Any]) -> dict[str, A
                 "next_slab": slab_proj.get("current_label"),
                 "kwh_until_cliff": round(kwh_to_next, 2),
                 "rate_jump_pkr_per_kwh": round(jump_rate, 2),
-                "expected_overshoot_kwh": round(max(0.0, projected_month_end - cur_upper), 2),
+                "expected_overshoot_kwh": round(max(0.0, projected_cycle_end - cur_upper), 2),
             }
 
     return {
-        "month": month,
-        "days_elapsed": days_elapsed,
-        "days_remaining": days_remaining,
+        "month": forecast["label"],          # FESCO cycle label, e.g. "May26"
+        "cycle_start": forecast["start"].isoformat(),
+        "cycle_end": forecast["end"].isoformat(),
+        "days_elapsed": forecast["days_elapsed"],
+        "days_remaining": forecast["days_remaining"],
         "grid_kwh_so_far": round(grid_so_far, 2),
-        "daily_grid_rate_kwh": round(daily_grid_rate, 2),
-        "projected_month_end_grid_kwh": round(projected_month_end, 2),
+        "daily_grid_rate_kwh": round(forecast["daily_avg_kwh"], 2),
+        # Key name kept for front-end back-compat; value is now the projected
+        # cycle-end (26th) grid total, not the calendar month-end.
+        "projected_month_end_grid_kwh": round(projected_cycle_end, 2),
         "current_slab": slab_now,
         "projected_slab": slab_proj,
         "cliff_alert": cliff,
@@ -302,12 +308,10 @@ def build_full_payload(stats_manager, cost_config) -> dict[str, Any]:
     """One-shot payload for the savings page: today + this cycle + lifetime
     + slab projection + payback. The frontend gets everything in a single GET.
     """
-    import fesco_bill
-
     cfg = cost_config.load()
-    today_block = compute_today(stats_manager, cfg)
-
     today = date.today()
+    today_block = compute_today(stats_manager, cfg, today)
+
     start, end = fesco_bill.compute_cycle_boundaries(today, cfg, stats_manager.db_path)
     cycle_block = compute_savings_for_cycle(stats_manager.db_path, start, end, cfg)
     cycle_block["label"] = fesco_bill.cycle_label_for(end)
@@ -316,7 +320,7 @@ def build_full_payload(stats_manager, cost_config) -> dict[str, Any]:
 
     lifetime = compute_lifetime_from_cycles(stats_manager.db_path, cfg)
     payback = compute_payback(cfg.get("install_cost_pkr") or 0, lifetime["avg_daily_savings_pkr"])
-    projection = compute_slab_projection(stats_manager.db_path, cfg)
+    projection = compute_slab_projection(stats_manager.db_path, cfg, today)
 
     return {
         "config": cfg,

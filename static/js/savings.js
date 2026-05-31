@@ -131,7 +131,7 @@
             pill.innerHTML = `<i class="fas fa-triangle-exclamation"></i> Will cross slab`;
             $('cliff-alert').classList.remove('hidden');
             $('cliff-text').innerHTML = `
-                You're at <b>${fmtKWh(p.grid_kwh_so_far)} kWh</b> grid usage this month
+                You're at <b>${fmtKWh(p.grid_kwh_so_far)} kWh</b> grid usage this cycle
                 (<b>${cliff.current_slab}</b>, Rs ${cur.current_rate}/kWh).
                 At your current daily pace you'll cross into <b>${cliff.next_slab}</b> at
                 Rs ${proj.current_rate}/kWh — a jump of <b>Rs ${cliff.rate_jump_pkr_per_kwh}/kWh</b>.

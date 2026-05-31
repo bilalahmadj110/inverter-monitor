@@ -14,6 +14,14 @@ MPP_PORT = '/dev/hidraw0'
 INVERTER_EFFICIENCY = 0.92
 GRID_ESTIMATE_TOLERANCE_W = 15
 GRID_PRESENT_MIN_VOLTAGE = 180
+# Deadband for the *derived* grid-power estimate. Grid power isn't measured —
+# it's the residual of load/solar/battery (each imperfectly measured) clamped
+# to >=0. That clamp rectifies measurement noise into a phantom positive draw
+# (the "random 70-80 W while my meter reads zero" symptom). Suppress any
+# estimate below max(floor, fraction*throughput); noise grows with throughput,
+# so the deadband does too. Bypassed while AC-charging (grid is definitely on).
+GRID_NOISE_FLOOR_W = 100
+GRID_NOISE_FRACTION = 0.05
 
 MODE_LABELS = {
     'P': 'Power On',
@@ -418,7 +426,8 @@ def _derive_grid_power(parsed, metrics):
     if grid_voltage < GRID_PRESENT_MIN_VOLTAGE:
         return 0.0
 
-    if estimate < GRID_ESTIMATE_TOLERANCE_W and not is_ac_charging:
+    deadband = max(GRID_NOISE_FLOOR_W, GRID_NOISE_FRACTION * (load_p + solar_p))
+    if estimate < deadband and not is_ac_charging:
         return 0.0
     return max(0.0, round(estimate, 1))
 

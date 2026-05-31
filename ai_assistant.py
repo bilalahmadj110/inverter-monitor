@@ -38,7 +38,7 @@ You will be given a JSON snapshot containing:
   - `cycle` — current FESCO billing cycle (26th of last month → 26th of this month, weekend-rolls-to-Monday) bill simulation (with-solar vs without-solar). Also exposed as `month` for back-compat.
   - `lifetime` — savings since system install
   - `payback` — months/years to recoup install cost
-  - `projection` — month-end grid kWh projection + slab cliff alert
+  - `projection` — cycle-end (26th→26th) grid kWh projection + slab cliff alert
   - `config` — LESCO tariff config: consumer type, slabs, FPA, taxes
   - `recent_history` — last 14 days of daily kWh per source
 
