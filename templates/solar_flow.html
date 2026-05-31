@@ -131,6 +131,27 @@
         .battery-svg { width: 54px; height: 78px; }
         .battery-fill { transition: height 0.6s ease, y 0.6s ease, fill 0.6s ease; }
 
+        /* Scale the corner flow diagram down on phones so nodes don't crowd the centre inverter. */
+        @media (max-width: 600px) {
+            .flow-container { height: 360px; }
+            .flow-icon { width: 54px; height: 54px; }
+            .flow-icon.inverter-icon { width: 84px; height: 84px; }
+            .flow-node { gap: 6px; }
+            .flow-node .info .v { font-size: 0.82rem; }
+            .flow-node .info .m { font-size: 0.66rem; }
+            .battery-svg { width: 42px; height: 62px; }
+            .flow-node.grid, .flow-node.solar { left: 0; }
+            .flow-node.load, .flow-node.battery { right: 0; }
+            .flow-label { display: none; }
+        }
+        @media (max-width: 380px) {
+            .flow-container { height: 320px; }
+            .flow-icon { width: 44px; height: 44px; }
+            .flow-icon.inverter-icon { width: 68px; height: 68px; }
+            .flow-node .info .v { font-size: 0.74rem; }
+            .flow-node .info .m { font-size: 0.6rem; }
+        }
+
         /* Component click affordance */
         .flow-node { cursor: pointer; transition: transform 0.15s ease; }
         .flow-node:hover { transform: translate(-0%, -0%) scale(1.04); }
@@ -228,22 +249,22 @@
 
     <!-- Top Navigation -->
     <nav class="bg-black/30 backdrop-blur-sm border-b border-white/10">
-        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-            <div class="flex items-center gap-2 text-white font-semibold">
+        <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div class="flex items-center gap-2 text-white font-semibold shrink-0">
                 <i class="fas fa-solar-panel text-yellow-300"></i>
                 <div class="leading-tight">
                     <div>Inverter Monitor</div>
                     <div class="text-[8px] font-mono font-normal text-white/25 tracking-wide">build {{ app_version }}</div>
                 </div>
             </div>
-            <div class="flex items-center gap-1">
-                <a href="/" class="px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white">Live</a>
-                <a href="/reports" class="px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Reports</a>
-                <a href="/savings" class="px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Savings</a>
-                <a href="/fesco-bill" class="px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">FESCO Bill</a>
-                <form method="post" action="{{ url_for('auth.logout') }}" class="inline">
+            <div class="flex items-center gap-1 overflow-x-auto max-w-full">
+                <a href="/" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white">Live</a>
+                <a href="/reports" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Reports</a>
+                <a href="/savings" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Savings</a>
+                <a href="/fesco-bill" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">FESCO Bill</a>
+                <form method="post" action="{{ url_for('auth.logout') }}" class="inline shrink-0">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="px-3 py-1.5 rounded-lg text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white transition-colors" title="Sign out">
+                    <button type="submit" class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white transition-colors" title="Sign out">
                         <i class="fas fa-right-from-bracket"></i>
                     </button>
                 </form>
@@ -253,8 +274,8 @@
 
     <!-- Header -->
     <div class="p-6 text-center">
-        <h1 class="text-4xl font-bold text-white mb-2 flex items-center justify-center">
-            <img src="{{ url_for('static', filename='icons/solar-panel.svg') }}" alt="Solar" class="w-10 h-10 mr-3">
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 flex flex-wrap items-center justify-center gap-2">
+            <img src="{{ url_for('static', filename='icons/solar-panel.svg') }}" alt="Solar" class="w-8 h-8 sm:w-10 sm:h-10">
             Solar Energy System Monitor
         </h1>
         <p class="text-blue-200">Real-time System Status</p>
