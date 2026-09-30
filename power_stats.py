@@ -8,11 +8,11 @@ from datetime import datetime, timedelta
 logger = logging.getLogger(__name__)
 
 GAP_CAP_SECONDS = 15.0
-# On restart, seed time-weighted accumulators with stored averages so the
-# day's *_avg columns aren't overwritten with a partial-day value on the
-# first flush. One hour of pseudo-weight lets fresh samples catch up but
-# keeps the morning's average visible through a midday reboot.
-AVG_SEED_TSUM_SECONDS = 3600.0
+# On restart, seed the time-weighted average accumulators with the stored
+# average and a weight equal to the seconds already elapsed today, so the
+# post-restart samples carry only their true share. (A fixed one-hour weight
+# let an evening of zero-solar samples drag a 270 W daily solar average to 59 W.)
+AVG_SEED_MIN_SECONDS = 60.0
 
 
 class PowerStats:
@@ -72,6 +72,15 @@ class PowerStats:
 
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+
+                # WAL lets the flush commit while a heavy report/export query is reading. With
+                # the default rollback journal every long SELECT held the writer off for up to
+                # busy_timeout, which used to stall the inverter reader thread as well.
+                try:
+                    mode = cursor.execute('PRAGMA journal_mode=WAL').fetchone()[0]
+                    logger.info(f"SQLite journal_mode={mode}")
+                except sqlite3.DatabaseError as e:
+                    logger.warning(f"Could not switch journal_mode to WAL: {e}")
 
                 cursor.execute('''
                 CREATE TABLE IF NOT EXISTS power_readings (
@@ -151,15 +160,19 @@ class PowerStats:
                             self.current_day['battery']['charge_energy'] = row['battery_charge_energy'] or 0
                             self.current_day['battery']['discharge_energy'] = row['battery_discharge_energy'] or 0
 
+                    now_dt = datetime.now()
+                    midnight = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                    seed_seconds = max(AVG_SEED_MIN_SECONDS, (now_dt - midnight).total_seconds())
+
                     for source in ('solar', 'grid', 'load'):
                         avg_val = row[f'{source}_avg'] or 0
                         if avg_val > 0:
-                            self.current_day[source]['wsum'] = avg_val * AVG_SEED_TSUM_SECONDS
-                            self.current_day[source]['tsum'] = AVG_SEED_TSUM_SECONDS
+                            self.current_day[source]['wsum'] = avg_val * seed_seconds
+                            self.current_day[source]['tsum'] = seed_seconds
 
                     if 'pf_avg' in keys and row['pf_avg']:
-                        self.current_day['pf']['wsum'] = row['pf_avg'] * AVG_SEED_TSUM_SECONDS
-                        self.current_day['pf']['tsum'] = AVG_SEED_TSUM_SECONDS
+                        self.current_day['pf']['wsum'] = row['pf_avg'] * seed_seconds
+                        self.current_day['pf']['tsum'] = seed_seconds
 
                     if 'temperature_max' in keys and row['temperature_max'] is not None:
                         self.current_day['temperature']['max'] = row['temperature_max']
@@ -230,9 +243,8 @@ class PowerStats:
 
             with self.buffer_lock:
                 self.memory_buffer.append(record)
-
-            if time.time() - self.last_flush_time >= self.flush_interval:
-                self.flush_to_disk()
+            # Disk writes happen only on the flush thread (_periodic_flush): this method runs
+            # on the inverter reader thread and must never block on SQLite.
 
         except Exception as e:
             logger.error(f"Error recording reading: {e}")
@@ -315,6 +327,10 @@ class PowerStats:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                # Under WAL, NORMAL is crash-safe (a power cut loses at most the last
+                # un-checkpointed commit, i.e. <= one flush interval) and halves the fsyncs
+                # on the SD card.
+                cursor.execute('PRAGMA synchronous=NORMAL')
 
                 cursor.executemany(
                     '''INSERT INTO power_readings (
@@ -538,9 +554,13 @@ class PowerStats:
         self_sufficiency = 0
         if load_kwh > 0:
             self_sufficiency = max(0.0, min(1.0, 1 - (grid_kwh / load_kwh)))
+        # Share of the load that solar actually served: production minus what the battery
+        # absorbed and did not give back (float/absorption losses are solar kWh that never
+        # reach a load).
+        solar_to_load_kwh = max(0.0, solar_kwh - max(0.0, charge_kwh - discharge_kwh))
         solar_fraction = 0
         if load_kwh > 0:
-            solar_fraction = max(0.0, min(1.0, solar_kwh / load_kwh))
+            solar_fraction = max(0.0, min(1.0, solar_to_load_kwh / load_kwh))
 
         return {
             'date': stats.get('date'),
@@ -558,6 +578,7 @@ class PowerStats:
             'temperature_max': round(stats.get('temperature_max') or 0, 1),
             'self_sufficiency': round(self_sufficiency, 3),
             'solar_fraction': round(solar_fraction, 3),
+            'solar_to_load_kwh': round(solar_to_load_kwh, 3),
         }
 
     def get_history(self, days=30):
@@ -607,11 +628,14 @@ class PowerStats:
                     end_dt = start_dt + timedelta(days=1)
                     start_ts = int(start_dt.timestamp())
                     end_ts = int(end_dt.timestamp())
+                    # Use the sub-second start_timestamp for the interval width: the integer
+                    # `timestamp` column makes consecutive 0.6 s readings collide.
                     rows = cursor.execute('''
-                        SELECT timestamp, solar_power, grid_power, load_power, battery_power
+                        SELECT COALESCE(start_timestamp, timestamp) AS ts,
+                               solar_power, grid_power, load_power, battery_power
                         FROM power_readings
                         WHERE timestamp >= ? AND timestamp < ?
-                        ORDER BY timestamp ASC
+                        ORDER BY ts ASC
                     ''', (start_ts, end_ts)).fetchall()
 
                     solar_wh = grid_wh = load_wh = charge_wh = discharge_wh = 0.0
@@ -654,13 +678,25 @@ class PowerStats:
                     def safe_min(v): return 0 if v == float('inf') else v
                     def avg(wsum): return wsum / total_dt if total_dt > 0 else 0
 
+                    # Upsert the recomputed columns only; pf_avg / temperature_max have no
+                    # per-reading source and must survive a recompute.
                     cursor.execute('''
-                    INSERT OR REPLACE INTO daily_stats (
+                    INSERT INTO daily_stats (
                         date, solar_min, solar_max, solar_avg, solar_energy,
                         grid_min, grid_max, grid_avg, grid_energy,
                         load_min, load_max, load_avg, load_energy,
                         battery_min, battery_max, battery_charge_energy, battery_discharge_energy
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(date) DO UPDATE SET
+                        solar_min=excluded.solar_min, solar_max=excluded.solar_max,
+                        solar_avg=excluded.solar_avg, solar_energy=excluded.solar_energy,
+                        grid_min=excluded.grid_min, grid_max=excluded.grid_max,
+                        grid_avg=excluded.grid_avg, grid_energy=excluded.grid_energy,
+                        load_min=excluded.load_min, load_max=excluded.load_max,
+                        load_avg=excluded.load_avg, load_energy=excluded.load_energy,
+                        battery_min=excluded.battery_min, battery_max=excluded.battery_max,
+                        battery_charge_energy=excluded.battery_charge_energy,
+                        battery_discharge_energy=excluded.battery_discharge_energy
                     ''', (
                         d,
                         safe_min(solar_min), solar_max, avg(solar_wsum), solar_wh,
@@ -669,6 +705,21 @@ class PowerStats:
                         safe_min(batt_min),  batt_max,  charge_wh, discharge_wh,
                     ))
                     updated.append({'date': d, 'solar_wh': round(solar_wh, 2), 'grid_wh': round(grid_wh, 2), 'load_wh': round(load_wh, 2)})
+
+                # Keep monthly_stats consistent with the recomputed days.
+                for month in sorted({u['date'][:7] for u in updated}):
+                    cursor.execute('''
+                    INSERT OR REPLACE INTO monthly_stats (
+                        month, solar_energy, grid_energy, load_energy,
+                        battery_charge_energy, battery_discharge_energy
+                    )
+                    SELECT strftime('%Y-%m', date),
+                           SUM(solar_energy), SUM(grid_energy), SUM(load_energy),
+                           SUM(battery_charge_energy), SUM(battery_discharge_energy)
+                    FROM daily_stats
+                    WHERE strftime('%Y-%m', date) = ?
+                    GROUP BY strftime('%Y-%m', date)
+                    ''', (month,))
 
                 conn.commit()
 

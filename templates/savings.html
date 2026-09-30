@@ -96,10 +96,10 @@
             <div class="stat-card">
                 <div class="label">Today's Savings</div>
                 <div class="big-number">Rs <span id="kpi-today">—</span></div>
-                <div class="text-white/50 text-xs mt-1"><span id="kpi-today-kwh">—</span> kWh solar @ <span id="kpi-today-rate">—</span> /kWh</div>
+                <div class="text-white/50 text-xs mt-1"><span id="kpi-today-kwh">—</span> kWh grid avoided @ <span id="kpi-today-rate">—</span> /kWh</div>
             </div>
             <div class="stat-card">
-                <div class="label">This Month</div>
+                <div class="label">This Cycle</div>
                 <div class="big-number">Rs <span id="kpi-month">—</span></div>
                 <div class="text-white/50 text-xs mt-1">vs grid-only bill</div>
             </div>
@@ -130,7 +130,7 @@
         <div class="grid md:grid-cols-2 gap-6 mb-6">
             <div class="stat-card">
                 <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-white font-semibold">This month</h3>
+                    <h3 class="text-white font-semibold">This billing cycle</h3>
                     <span class="pill info" id="month-label">—</span>
                 </div>
                 <div class="row"><span class="k">Solar produced</span><span class="v"><span id="m-solar">—</span> kWh</span></div>
@@ -138,7 +138,7 @@
                 <div class="row"><span class="k">Total load</span><span class="v"><span id="m-load">—</span> kWh</span></div>
                 <div class="row"><span class="k">Bill without solar</span><span class="v">Rs <span id="m-bill-without">—</span></span></div>
                 <div class="row"><span class="k">Bill with solar</span><span class="v">Rs <span id="m-bill-with">—</span></span></div>
-                <div class="row text-emerald-300"><span class="k">Saved this month</span><span class="v">Rs <span id="m-saved">—</span></span></div>
+                <div class="row text-emerald-300"><span class="k">Saved this cycle</span><span class="v">Rs <span id="m-saved">—</span></span></div>
 
                 <details class="mt-3">
                     <summary class="text-white/70 text-sm flex items-center gap-2">
@@ -223,6 +223,14 @@
                     <input type="number" id="cfg-sanctioned-load" step="0.1" min="0">
                 </div>
                 <div>
+                    <label class="label block mb-1">Fixed charge (PKR/kW)</label>
+                    <input type="number" id="cfg-fix-kw" step="1" min="0">
+                </div>
+                <div>
+                    <label class="label block mb-1">Fixed charge applies above (units)</label>
+                    <input type="number" id="cfg-fix-min" step="1" min="-1" title="-1 = every bill">
+                </div>
+                <div>
                     <label class="label block mb-1">FPA (PKR/unit, monthly)</label>
                     <input type="number" id="cfg-fpa" step="0.01">
                 </div>
@@ -290,6 +298,33 @@
                 </button>
                 <span id="config-toast" class="ml-2 self-center text-sm"></span>
             </div>
+
+            <details class="mt-4" id="tariff-check" open>
+                <summary class="text-white/80 text-sm flex items-center gap-2 mb-2">
+                    <span class="chev"><i class="fas fa-chevron-right text-xs"></i></span>
+                    Check this tariff against your real bills
+                    <span class="pill" id="tariff-check-pill">—</span>
+                </summary>
+                <p class="text-white/50 text-xs mb-2">
+                    Every closed cycle with a real bill amount (bootstrapped history or a recorded meter reading) is re-billed
+                    with the config above. Tune FPA, surcharges and fixed charges until the error is small — this is what
+                    every savings figure on this page is built on.
+                </p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead>
+                            <tr class="text-white/60 border-b border-white/10">
+                                <th class="text-left py-1.5">Cycle</th>
+                                <th class="text-right py-1.5">Units</th>
+                                <th class="text-right py-1.5">Actual bill</th>
+                                <th class="text-right py-1.5">This config</th>
+                                <th class="text-right py-1.5">Error</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tariff-check-body"></tbody>
+                    </table>
+                </div>
+            </details>
         </div>
 
         <!-- What-if calculator -->
@@ -310,12 +345,12 @@
 
         <!-- Recent monthly history -->
         <div class="stat-card mb-12">
-            <h3 class="text-white font-semibold mb-3 flex items-center gap-2"><i class="fas fa-clock-rotate-left text-white/60"></i> Monthly savings history</h3>
+            <h3 class="text-white font-semibold mb-3 flex items-center gap-2"><i class="fas fa-clock-rotate-left text-white/60"></i> Billing-cycle savings history</h3>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="text-white/60 border-b border-white/10">
-                            <th class="text-left py-2">Month</th>
+                            <th class="text-left py-2">Cycle</th>
                             <th class="text-right py-2">Solar (kWh)</th>
                             <th class="text-right py-2">Grid (kWh)</th>
                             <th class="text-right py-2">Load (kWh)</th>

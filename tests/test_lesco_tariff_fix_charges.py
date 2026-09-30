@@ -18,6 +18,7 @@ def _cfg(**overrides):
     cfg["electricity_duty_percent"] = 0
     cfg["tv_fee_pkr"] = 0
     cfg["min_bill_below_5kw"] = 0
+    cfg["fix_charges_min_units"] = -1   # apply on every bill (these tests pin the arithmetic)
     cfg.update(overrides)
     return cfg
 
@@ -47,3 +48,24 @@ def test_gst_applies_on_top_of_fix_charges():
     bill = lesco_tariff.compute_bill(162, _cfg(gst_percent=17.0))
     assert bill["fix_charges"] == 900
     assert bill["gst"] == 949.18
+
+
+def test_default_threshold_is_300_units():
+    assert lesco_tariff.default_config()["fix_charges_min_units"] == 300
+
+
+def test_fix_charges_absent_below_threshold():
+    # A 162-unit bill carries no fixed-charge line (NEPRA levies it from 301 units up).
+    bill = lesco_tariff.compute_bill(162, _cfg(fix_charges_min_units=300))
+    assert bill["fix_charges"] == 0
+    assert bill["subtotal"] == 4683.42
+
+
+def test_fix_charges_applied_above_threshold():
+    bill = lesco_tariff.compute_bill(350, _cfg(fix_charges_min_units=300))
+    assert bill["fix_charges"] == 900
+
+
+def test_fix_charges_threshold_is_exclusive():
+    assert lesco_tariff.compute_bill(300, _cfg(fix_charges_min_units=300))["fix_charges"] == 0
+    assert lesco_tariff.compute_bill(301, _cfg(fix_charges_min_units=300))["fix_charges"] == 900

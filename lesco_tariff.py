@@ -30,6 +30,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "fpa_per_unit": 4.5,              # Fuel Price Adjustment, monthly notification
     "qtr_adjustment_per_unit": 0.0,   # Quarterly Tariff Adjustment (optional)
     "fix_charges_per_kw": 300,        # Fixed monthly charge per kW of sanctioned load (FESCO ~300).
+    # The per-kW fixed charge is levied on domestic consumers only above a consumption
+    # threshold (NEPRA: from the 301-400 unit slab up); below it the line is simply absent
+    # from the bill. Applied when units > this value; -1 applies it to every bill.
+    "fix_charges_min_units": 300,
 
     # All taxes/surcharges. Edit any from the UI.
     "gst_percent": 17.0,
@@ -166,7 +170,9 @@ def compute_bill(units: float, config: dict[str, Any] | None = None) -> dict[str
     qta = units * float(cfg.get("qtr_adjustment_per_unit", 0) or 0)
     fc_surcharge = units * float(cfg.get("fc_surcharge_per_unit", 0) or 0)
     nj_surcharge = units * float(cfg.get("nj_surcharge_per_unit", 0) or 0)
-    fix_charges = fix_charges_total(cfg)
+    min_units = cfg.get("fix_charges_min_units", 300)
+    min_units = -1.0 if min_units is None else float(min_units)
+    fix_charges = fix_charges_total(cfg) if (min_units < 0 or units > min_units) else 0.0
 
     # GST and electricity duty are calculated on (energy + fix + FPA + QTA + surcharges).
     pre_tax = energy_charge + fix_charges + fpa + qta + fc_surcharge + nj_surcharge

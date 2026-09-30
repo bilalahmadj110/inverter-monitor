@@ -5,8 +5,12 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import time
 import os
+import signal
+import sys
 import subprocess
 import logging
+import threading
+from datetime import date
 import power_stats
 import cost_config as cost_config_module
 import cost_savings
@@ -48,8 +52,10 @@ csrf = CSRFProtect(app)
 
 # Per-IP rate limiting. Lenient defaults for reads, strict overrides on auth and writes.
 def _client_key():
+    # cloudflared runs on this host, so CF-Connecting-IP is only trustworthy when the TCP
+    # peer is loopback; a LAN client could otherwise forge it to dodge the per-IP login limit.
     cf = request.headers.get('CF-Connecting-IP')
-    if cf:
+    if cf and request.remote_addr in ('127.0.0.1', '::1'):
         return cf
     return get_remote_address()
 
@@ -77,12 +83,28 @@ cycle_store = fesco_cycles_module.get_instance(stats_manager.db_path)
 def _on_reading(status, total_readings):
     """Fired for every successful inverter read. Push to WebSocket clients;
     fold in a full stats payload every 100th reading."""
-    socketio.emit('inverter_update', status)
+    # raw_data is the whole parsed QPIGS dict; nothing in the UI reads it and it is more than
+    # half of every push (~1.2 of 2.1 KB at 1.6 pushes/s per open tab through the tunnel).
+    # It stays available on GET /status.
+    payload = {k: v for k, v in status.items() if k != 'raw_data'}
+    socketio.emit('inverter_update', payload)
     if total_readings % 100 == 0:
         socketio.emit('stats_update', _build_stats_payload())
 
 
 continuous_reader = ContinuousReader(stats_manager, on_reading=_on_reading)
+
+
+def _cycle_maintenance_loop(interval_seconds=3600):
+    """Keep billing_cycles current even when nobody opens the FESCO page: close elapsed
+    cycles, back-fill any that were skipped, open the current one. Runs at startup and
+    hourly; ensure_open_cycle is idempotent and a single SELECT when nothing is due."""
+    while True:
+        try:
+            cycle_store.ensure_open_cycle(date.today(), cost_cfg.load())
+        except Exception as e:
+            logger.warning(f"cycle maintenance failed: {e}")
+        time.sleep(interval_seconds)
 
 
 @app.context_processor
@@ -321,6 +343,7 @@ def export_readings():
     output = io.StringIO()
     writer = csv.writer(output)
     rows = data.get('rows', [])
+    truncated = bool(data.get('truncated'))
     if rows:
         cols = list(rows[0].keys())
         writer.writerow(['timestamp_iso'] + cols)
@@ -328,10 +351,16 @@ def export_readings():
         for r in rows:
             iso = _dt.fromtimestamp(r['timestamp']).isoformat() if r.get('timestamp') else ''
             writer.writerow([iso] + [r.get(c, '') for c in cols])
+        if truncated:
+            # Raw readings arrive every ~0.6 s, so the row cap covers roughly 1.5 days.
+            # Say so inside the file; a silent cut looked like a complete export.
+            writer.writerow([f'# TRUNCATED at {len(rows)} rows: narrow the date range or export with a bucket'])
     else:
         writer.writerow(['timestamp_iso', 'note'])
         writer.writerow(['', 'no readings in range'])
     output.seek(0)
+    if truncated:
+        label += '_TRUNCATED'
     return Response(
         output.getvalue(),
         mimetype='text/csv',
@@ -344,7 +373,12 @@ def export_readings():
 @app.route('/savings/data')
 @login_required
 def savings_data():
-    """One-shot payload for the savings page: today + month + lifetime + payback + slab projection."""
+    """One-shot payload for the savings page: today + cycle + lifetime + payback + slab projection."""
+    try:
+        # Lifetime/projection read billing_cycles; make sure elapsed cycles are closed first.
+        cycle_store.ensure_open_cycle(date.today(), cost_cfg.load())
+    except Exception as e:
+        logger.warning(f"ensure_open_cycle before savings payload failed: {e}")
     return jsonify(cost_savings.build_full_payload(stats_manager, cost_cfg))
 
 
@@ -450,13 +484,19 @@ def _build_bill_payload(label: str | None) -> dict:
     history = [
         {
             "label": c["cycle_label"],
+            "start_date": c["start_date"],
+            "end_date": c["end_date"],
             "units": c["units_actual"] if c["units_actual"] is not None
                      else c["units_estimated"],
+            "units_actual": c["units_actual"],
+            "units_estimated": c["units_estimated"],
             "bill_amount": c["bill_amount_actual"]
                            if c["bill_amount_actual"] is not None
                            else c["bill_amount_estimated"],
+            "bill_amount_estimated": c["bill_amount_estimated"],
             "paid": c["payment_amount"],
             "is_actual": c["units_actual"] is not None,
+            "notes": c["notes"],
         }
         for c in all_cycles if c["status"] == "closed"
     ][:12]
@@ -464,6 +504,7 @@ def _build_bill_payload(label: str | None) -> dict:
     # Status detection (uses oldest-first list).
     closed_oldest_first = list(reversed([c for c in all_cycles if c["status"] == "closed"]))
     status_block = fesco_bill.detect_protected_status(closed_oldest_first)
+    calibration = fesco_bill.compute_calibration(closed_oldest_first)
     if forecast:
         flip = fesco_bill.predict_status_flip(closed_oldest_first, forecast, cfg)
         status_block["flip_prediction"] = flip
@@ -486,6 +527,7 @@ def _build_bill_payload(label: str | None) -> dict:
         "lp_surcharge": lp,
         "history": history,
         "status": status_block,
+        "calibration": calibration,
     }
 
 
@@ -537,6 +579,53 @@ def fesco_upsert_cycle():
     except Exception as e:
         logger.error(f"fesco_upsert failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/fesco/cycle/<label>/actual', methods=['POST'])
+@login_required
+@limiter.limit('30 per minute')
+def fesco_record_actual(label):
+    """Record the meter figure from the paper bill against a closed cycle.
+    Body: {units_actual: number|null, bill_amount_actual?: number|null, payment_amount?: number|null}.
+    units_actual null clears a previous entry. The inverter estimate is kept alongside so
+    the two can be compared (see `calibration` in /fesco/bill)."""
+    body = request.get_json(silent=True) or {}
+    cycle = cycle_store.get_cycle(label)
+    if cycle is None:
+        return jsonify({"success": False, "error": f"unknown cycle: {label}"}), 404
+    if cycle["status"] != "closed":
+        return jsonify({"success": False, "error": "only closed cycles can take a meter reading"}), 400
+
+    def _num(key):
+        v = body.get(key)
+        if v in (None, ""):
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"{key} must be a number")
+
+    try:
+        units = _num("units_actual")
+        if units is not None and units < 0:
+            raise ValueError("units_actual must be >= 0")
+        patch = dict(cycle)
+        patch["units_actual"] = int(round(units)) if units is not None else None
+        patch["notes"] = "meter" if units is not None else "auto"
+        if "bill_amount_actual" in body:
+            patch["bill_amount_actual"] = _num("bill_amount_actual")
+        if "payment_amount" in body:
+            patch["payment_amount"] = _num("payment_amount")
+        result = cycle_store.upsert_cycle(patch)
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"fesco_record_actual failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    audit('fesco_record_actual', label=label, units_actual=patch["units_actual"])
+    closed = [c for c in cycle_store.list_cycles(limit=240) if c["status"] == "closed"]
+    return jsonify({"success": True, "cycle": result,
+                    "calibration": fesco_bill.compute_calibration(closed)})
 
 
 @app.route('/fesco/bootstrap', methods=['POST'])
@@ -719,8 +808,13 @@ def handle_request_stats():
 
 
 if __name__ == '__main__':
+    # systemd stops us with SIGTERM. Python's default action exits without unwinding, so the
+    # `finally` below never ran and every restart dropped up to one flush interval (60 s) of
+    # buffered readings. Turn the signal into SystemExit so the buffer is flushed first.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
         continuous_reader.start()
+        threading.Thread(target=_cycle_maintenance_loop, daemon=True).start()
         bind_host = os.environ.get('BIND_HOST', '0.0.0.0')
         socketio.run(app, host=bind_host, port=5000, allow_unsafe_werkzeug=True)
     finally:

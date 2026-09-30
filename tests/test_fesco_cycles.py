@@ -19,6 +19,7 @@ def _cfg(**overrides):
         "weekend_rolls_to_monday": True,
         "sanctioned_load_kw": 3.0,
         "fix_charges_per_kw": 300,
+        "fix_charges_min_units": -1,
         "fpa_per_unit": 0,
         "fc_surcharge_per_unit": 0,
         "nj_surcharge_per_unit": 0,
@@ -154,3 +155,80 @@ def test_ensure_open_cycle_closes_stale_open(store):
     # bill_amount_estimated populated from compute_bill on units_estimated
     assert closed["bill_amount_estimated"] is not None
     assert closed["bill_amount_estimated"] > 0
+    # The inverter figure is an estimate; the meter column stays empty until recorded.
+    assert closed["units_actual"] is None
+    assert closed["notes"] == "auto"
+
+
+def test_ensure_open_cycle_backfills_skipped_cycles(store, seed_daily):
+    # Aug26 was left open (28 Jul..26 Aug) and nobody opened the page until 30 Sep.
+    # Readings exist throughout, so Sep26 must be back-filled as a closed estimate and
+    # Oct26 (29 Sep..26 Oct) opened — not a single 61-day "Oct26" starting 27 Aug.
+    store.upsert_cycle({
+        "cycle_label": "Aug26", "start_date": "2026-07-28",
+        "end_date": "2026-08-26", "status": "open",
+    })
+    seed_daily("2026-08-10", grid_wh=100_000, load_wh=150_000)
+    seed_daily("2026-09-10", grid_wh=200_000, load_wh=250_000)
+    seed_daily("2026-09-29", grid_wh=5_000, load_wh=8_000)
+
+    new_open = store.ensure_open_cycle(date(2026, 9, 30), _cfg())
+
+    aug = store.get_cycle("Aug26")
+    assert aug["status"] == "closed"
+    assert aug["units_estimated"] == 100.0
+    assert aug["units_actual"] is None
+
+    sep = store.get_cycle("Sep26")
+    assert sep is not None and sep["status"] == "closed"
+    assert sep["start_date"] == "2026-08-27"
+    assert sep["end_date"] == "2026-09-28"   # 26 Sep 2026 is a Saturday -> Monday
+    assert sep["units_estimated"] == 200.0
+    assert sep["notes"] == "auto"
+
+    assert new_open["cycle_label"] == "Oct26"
+    assert new_open["status"] == "open"
+    assert new_open["start_date"] == "2026-09-29"
+    assert new_open["end_date"] == "2026-10-26"
+    assert [c["cycle_label"] for c in store.list_cycles() if c["status"] == "open"] == ["Oct26"]
+
+    # Idempotent: a second call changes nothing.
+    again = store.ensure_open_cycle(date(2026, 9, 30), _cfg())
+    assert again["cycle_label"] == "Oct26"
+    assert len(store.list_cycles()) == 3
+
+
+def test_ensure_open_cycle_skips_backfill_without_readings(store):
+    # No daily_stats at all: an elapsed cycle with no data must not be invented (a
+    # zero-unit cycle would look "protected" to the NEPRA window).
+    store.upsert_cycle({
+        "cycle_label": "Aug26", "start_date": "2026-07-28",
+        "end_date": "2026-08-26", "status": "open",
+    })
+    new_open = store.ensure_open_cycle(date(2026, 9, 30), _cfg())
+    assert store.get_cycle("Sep26") is None
+    assert new_open["cycle_label"] == "Oct26"
+    assert new_open["start_date"] == "2026-09-29"
+
+
+def test_init_uncopies_auto_filled_actuals(tmp_db):
+    # Rows written by the old auto-close carried the estimate in units_actual too.
+    store = fesco_cycles.CycleStore(tmp_db)
+    store.upsert_cycle({
+        "cycle_label": "Jul26", "start_date": "2026-06-27", "end_date": "2026-07-27",
+        "status": "closed", "units_estimated": 392.406, "units_actual": 392,
+        "bill_amount_estimated": 21756.57, "bill_amount_actual": 21756.57,
+    })
+    store.upsert_cycle({
+        "cycle_label": "Mar26", "start_date": "2026-02-27", "end_date": "2026-03-26",
+        "status": "closed", "units_actual": 160, "bill_amount_actual": 5638.0,
+        "payment_amount": 5638.0, "notes": "bootstrap",
+    })
+    fesco_cycles.CycleStore(tmp_db)  # re-init runs the cleanup
+    jul = store.get_cycle("Jul26")
+    assert jul["units_actual"] is None
+    assert jul["bill_amount_actual"] is None
+    assert jul["notes"] == "auto"
+    assert jul["units_estimated"] == 392.406
+    mar = store.get_cycle("Mar26")
+    assert mar["units_actual"] == 160 and mar["bill_amount_actual"] == 5638.0

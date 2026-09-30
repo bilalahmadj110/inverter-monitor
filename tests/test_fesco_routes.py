@@ -104,6 +104,62 @@ def test_upsert_actual_then_status_updates(client):
     assert status["status"] == "protected"
 
 
+def test_record_meter_reading_and_calibration(client):
+    import fesco_cycles
+    store = fesco_cycles._instance
+    store.upsert_cycle({
+        "cycle_label": "Aug26", "start_date": "2026-07-28", "end_date": "2026-08-26",
+        "status": "closed", "units_estimated": 353.1, "bill_amount_estimated": 19697.0,
+        "notes": "auto",
+    })
+    store.upsert_cycle({
+        "cycle_label": "Zzz99", "start_date": "2026-08-27", "end_date": "2099-01-01",
+        "status": "open",
+    })
+
+    resp = client.post("/fesco/cycle/Aug26/actual",
+                       data=json.dumps({"units_actual": 370, "bill_amount_actual": 20500}),
+                       content_type="application/json")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["cycle"]["units_actual"] == 370
+    assert body["cycle"]["units_estimated"] == 353.1     # estimate preserved alongside
+    assert body["cycle"]["notes"] == "meter"
+    assert abs(body["calibration"]["factor"] - 370 / 353.1) < 1e-3
+
+    # Open cycles and unknown labels are refused.
+    assert client.post("/fesco/cycle/Zzz99/actual", data=json.dumps({"units_actual": 1}),
+                       content_type="application/json").status_code == 400
+    assert client.post("/fesco/cycle/Nope00/actual", data=json.dumps({"units_actual": 1}),
+                       content_type="application/json").status_code == 404
+
+    # Clearing restores the estimate-only state.
+    resp = client.post("/fesco/cycle/Aug26/actual", data=json.dumps({"units_actual": None}),
+                       content_type="application/json")
+    assert resp.status_code == 200
+    assert resp.get_json()["cycle"]["units_actual"] is None
+    assert resp.get_json()["calibration"]["factor"] is None
+
+
+def test_savings_data_smoke(client):
+    """/savings/data must maintain cycles first and return the cycle-based payload."""
+    from datetime import date as _date
+    resp = client.get("/savings/data")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    for key in ("today", "cycle", "month", "lifetime", "payback", "projection", "tariff_check", "config"):
+        assert key in data
+    assert "avoided_grid_kwh" in data["today"]
+    start = _date.fromisoformat(data["cycle"]["start"])
+    end = _date.fromisoformat(data["cycle"]["end"])
+    assert 26 <= (end - start).days + 1 <= 35          # one reading-day cycle, never a multi-month span
+    assert start <= _date.today() <= end
+    assert data["config"]["fix_charges_min_units"] == 300
+    # The route opened the current cycle as a side effect.
+    cycles = client.get("/fesco/cycles").get_json()["cycles"]
+    assert [c["status"] for c in cycles].count("open") == 1
+
+
 def test_delete_cycle(client):
     client.post("/fesco/bootstrap",
                 data=json.dumps({"rows": [{"cycle_label": "Jan26", "units_actual": 124}]}),

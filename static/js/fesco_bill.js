@@ -136,6 +136,16 @@
       statusLine = `<div class="text-xs ${tone} mt-1">Status: <strong>${status.status.toUpperCase()}</strong>${flipText}</div>`;
     }
 
+    let calLine = '';
+    const cal = payload.calibration || {};
+    if (cal.factor != null) {
+      const pct = ((cal.factor - 1) * 100).toFixed(1);
+      const dir = cal.factor >= 1 ? 'more' : 'less';
+      calLine = `<div class="text-xs text-white/60 mt-1">Meter vs inverter: the bill shows <strong>${Math.abs(pct)}% ${dir}</strong> than the inverter's estimate (×${cal.factor}, ${cal.cycles.length} cycle${cal.cycles.length === 1 ? '' : 's'}).</div>`;
+    } else if (!isOpen && !isActual) {
+      calLine = `<div class="text-xs text-white/60 mt-1">Record the units from the paper bill (pencil icon in the table below) to see how far the inverter's estimate is from the meter.</div>`;
+    }
+
     $('status-banner').className = `rounded-xl p-4 mb-4 border ${badgeBg}`;
     $('status-banner').innerHTML = `
       <div class="flex items-start gap-3">
@@ -143,6 +153,7 @@
         <div>
           <div class="text-white text-sm"><strong>${badgeLabel}</strong> · ${detail}</div>
           ${statusLine}
+          ${calLine}
         </div>
       </div>
     `;
@@ -204,14 +215,71 @@
       const billCol = row.bill_amount != null && row.bill_amount < 0
         ? `<span class="text-rose-400">${fmtPkr(row.bill_amount)} (refund)</span>`
         : fmtPkr(row.bill_amount);
-      return `<tr class="border-t border-white/5">
+      const meterCol = row.units_actual != null
+        ? `<span class="text-white">${fmtKwh(row.units_actual)}</span>`
+        : `<span class="text-white/40" title="not recorded yet">—</span>`;
+      const estCol = row.units_estimated != null
+        ? `<span class="text-white/70">${fmtKwh(row.units_estimated)}</span>`
+        : `<span class="text-white/30">—</span>`;
+      const billTone = row.is_actual ? 'text-white' : 'text-white/60';
+      return `<tr class="border-t border-white/5" data-label="${row.label}">
         <td class="py-1.5 text-white">${row.label}</td>
-        <td class="py-1.5 text-right text-white">${fmtKwh(row.units)}</td>
-        <td class="py-1.5 text-right text-white">${billCol}</td>
+        <td class="py-1.5 text-right meter-cell">${meterCol}</td>
+        <td class="py-1.5 text-right">${estCol}</td>
+        <td class="py-1.5 text-right ${billTone}">${billCol}</td>
         <td class="py-1.5 text-right text-white/70">${fmtPkr(row.paid)}</td>
+        <td class="py-1.5 text-right">
+          <button class="record-actual text-white/40 hover:text-white text-xs" title="Record the units and amount from the paper bill"><i class="fas fa-pencil"></i></button>
+        </td>
       </tr>`;
     }).join('');
     tbody.innerHTML = rows;
+    tbody.querySelectorAll('.record-actual').forEach((btn) => {
+      btn.addEventListener('click', () => openActualEditor(btn.closest('tr')));
+    });
+    const cal = payload.calibration || {};
+    const line = $('calibration-line');
+    if (line) {
+      line.textContent = cal.factor != null
+        ? `Calibration ×${cal.factor} from ${cal.cycles.map((c) => `${c.label} ${c.actual}/${c.estimated}`).join(', ')}. Nothing applies this automatically; it tells you how far the inverter-derived units sit from the meter.`
+        : 'Meter column = units printed on the FESCO bill; Inverter est. = grid kWh derived from the inverter\'s readings. Record a bill to compare them.';
+    }
+  }
+
+  function openActualEditor(tr) {
+    const label = tr.dataset.label;
+    const row = (window.__billHistory || []).find((r) => r.label === label) || {};
+    const cell = tr.querySelector('.meter-cell');
+    const prev = cell.innerHTML;
+    cell.innerHTML = `
+      <div class="flex flex-col items-end gap-1">
+        <input type="number" min="0" step="1" value="${row.units_actual ?? ''}" placeholder="units" data-f="units"
+               class="w-24 bg-white/10 border border-white/20 text-white rounded px-2 py-1 text-xs text-right">
+        <input type="number" step="0.01" value="${row.is_actual && row.bill_amount != null ? row.bill_amount : ''}" placeholder="bill PKR" data-f="bill"
+               class="w-24 bg-white/10 border border-white/20 text-white rounded px-2 py-1 text-xs text-right">
+        <div class="flex gap-2">
+          <button data-act="save" class="text-emerald-300 hover:text-emerald-100 text-xs">Save</button>
+          <button data-act="clear" class="text-white/50 hover:text-white text-xs" title="Remove the recorded meter figure">Clear</button>
+          <button data-act="cancel" class="text-white/50 hover:text-white text-xs">Cancel</button>
+        </div>
+      </div>`;
+    cell.querySelector('[data-f="units"]').focus();
+    cell.querySelector('[data-act="cancel"]').onclick = () => { cell.innerHTML = prev; };
+    const submit = async (clear) => {
+      const units = clear ? null : parseFloat(cell.querySelector('[data-f="units"]').value);
+      const bill = clear ? null : parseFloat(cell.querySelector('[data-f="bill"]').value);
+      if (!clear && !Number.isFinite(units)) { alert('Enter the units from the bill.'); return; }
+      const body = { units_actual: units };
+      if (clear || Number.isFinite(bill)) body.bill_amount_actual = clear ? null : bill;
+      try {
+        await fetchJSON(`/fesco/cycle/${encodeURIComponent(label)}/actual`, { method: 'POST', body: JSON.stringify(body) });
+        location.reload();
+      } catch (e) {
+        alert(`Save failed: ${e.message}`);
+      }
+    };
+    cell.querySelector('[data-act="save"]').onclick = () => submit(false);
+    cell.querySelector('[data-act="clear"]').onclick = () => submit(true);
   }
 
   function populateCyclePicker(allCycles, currentLabel) {
@@ -269,6 +337,7 @@
     renderCharges(billResp);
     renderSlab(billResp);
     renderPayable(billResp);
+    window.__billHistory = billResp.history || [];
     renderHistory(billResp);
   }
 

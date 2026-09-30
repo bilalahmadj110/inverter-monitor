@@ -113,6 +113,44 @@ def test_boundaries_uses_last_closed_cycle_when_present(tmp_db):
     assert end == date(2026, 3, 26)
 
 
+def test_boundaries_ignore_stale_closed_cycle(tmp_db):
+    # Last closed cycle ended 27 Jul; nobody opened the FESCO page until 30 Sep. The
+    # current cycle must be the rule-derived 29 Sep..26 Oct, not 28 Jul..26 Oct (91 days).
+    import fesco_cycles
+    fesco_cycles.CycleStore(tmp_db).upsert_cycle({
+        "cycle_label": "Jul26", "start_date": "2026-06-27", "end_date": "2026-07-27",
+        "status": "closed", "units_estimated": 392.4,
+    })
+    start, end = fesco_bill.compute_cycle_boundaries(date(2026, 9, 30), _cfg(), tmp_db)
+    assert (start, end) == (date(2026, 9, 29), date(2026, 10, 26))
+
+
+def test_boundaries_on_rolled_reading_day_itself(tmp_db):
+    # 26 Sep 2026 is a Saturday -> reading Mon 28 Sep. On the 28th that cycle is current.
+    start, end = fesco_bill.compute_cycle_boundaries(date(2026, 9, 28), _cfg(), tmp_db)
+    assert end == date(2026, 9, 28)
+    assert start == date(2026, 8, 27)
+
+
+def test_next_reading_day_after():
+    assert fesco_bill.next_reading_day_after(date(2026, 8, 26), 26, True) == date(2026, 9, 28)
+    assert fesco_bill.next_reading_day_after(date(2026, 9, 27), 26, True) == date(2026, 9, 28)
+    assert fesco_bill.next_reading_day_after(date(2026, 9, 28), 26, True) == date(2026, 10, 26)
+    assert fesco_bill.next_reading_day_after(date(2026, 12, 28), 26, True) == date(2027, 1, 26)
+
+
+def test_compute_calibration_uses_only_cycles_with_both_figures():
+    cycles = [
+        {"cycle_label": "Mar26", "units_actual": 160, "units_estimated": None},
+        {"cycle_label": "Aug26", "units_actual": 370, "units_estimated": 353.1},
+        {"cycle_label": "Sep26", "units_actual": None, "units_estimated": 326.3},
+    ]
+    cal = fesco_bill.compute_calibration(cycles)
+    assert cal["factor"] == pytest.approx(370 / 353.1, abs=1e-4)
+    assert [c["label"] for c in cal["cycles"]] == ["Aug26"]
+    assert fesco_bill.compute_calibration([])["factor"] is None
+
+
 # -------------------------- aggregate_cycle --------------------------
 
 def test_aggregate_cycle_sums_daily_stats_kwh(tmp_db, seed_daily):

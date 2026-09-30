@@ -119,13 +119,16 @@
                     <thead class="text-white/50 text-xs uppercase">
                         <tr>
                             <th class="text-left py-2">Month</th>
-                            <th class="text-right py-2">Units</th>
+                            <th class="text-right py-2" title="Units printed on the FESCO bill">Meter</th>
+                            <th class="text-right py-2" title="Grid kWh derived from the inverter's readings">Inverter est.</th>
                             <th class="text-right py-2">Bill</th>
                             <th class="text-right py-2">Paid</th>
+                            <th class="py-2"></th>
                         </tr>
                     </thead>
                     <tbody id="history-body"></tbody>
                 </table>
+                <div id="calibration-line" class="text-xs text-white/50 mt-3"></div>
             </div>
 
         </div>

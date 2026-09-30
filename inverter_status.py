@@ -11,17 +11,21 @@ logger = logging.getLogger(__name__)
 
 MPP_PORT = '/dev/hidraw0'
 
-INVERTER_EFFICIENCY = 0.92
-GRID_ESTIMATE_TOLERANCE_W = 15
+# Conversion efficiencies for the grid-power energy balance. PI30 reports PV power and
+# battery current on the DC side but load power on the AC side, so every DC->AC / AC->DC
+# leg needs a factor or the residual attributes the conversion loss to nobody.
+INVERTER_EFFICIENCY = 0.92   # DC bus <-> AC: inverting (PV/battery -> load) and AC charging
+SCC_EFFICIENCY = 0.97        # PV -> battery through the MPPT charger (DC-DC)
 GRID_PRESENT_MIN_VOLTAGE = 180
-# Deadband for the *derived* grid-power estimate. Grid power isn't measured —
-# it's the residual of load/solar/battery (each imperfectly measured) clamped
-# to >=0. That clamp rectifies measurement noise into a phantom positive draw
-# (the "random 70-80 W while my meter reads zero" symptom). Suppress any
-# estimate below max(floor, fraction*throughput); noise grows with throughput,
-# so the deadband does too. Bypassed while AC-charging (grid is definitely on).
-GRID_NOISE_FLOOR_W = 100
-GRID_NOISE_FRACTION = 0.05
+# Residuals below this are inside measurement resolution (integer watts on load/PV,
+# integer amps on the battery, ~25 W per step at 24 V) and are reported as 0. Bypassed
+# while AC-charging, when the grid is definitely being drawn on.
+GRID_MIN_REPORT_W = 30
+# Bypass signature used to derive Line mode when QMOD is unavailable or stale: in Line
+# mode the output *is* the grid passed through the transfer relay, so output voltage and
+# frequency track input exactly; in Battery mode the output is regulated (230.0 / 50.0).
+BYPASS_VOLTAGE_TOLERANCE_V = 1.0
+BYPASS_FREQUENCY_TOLERANCE_HZ = 0.05
 
 MODE_LABELS = {
     'P': 'Power On',
@@ -410,24 +414,43 @@ def get_warning_status():
 
 
 def _derive_grid_power(parsed, metrics):
-    """Energy balance estimate. Off-grid inverters can't export → clamp ≥ 0.
-    Gated on grid voltage being present (not on mode, which may be derived
-    incorrectly when QMOD is unavailable)."""
-    load_p = metrics['load']['active_power']
-    solar_p = metrics['solar']['power']
-    batt_charge_w = metrics['battery']['charging_current'] * metrics['battery']['voltage']
-    batt_discharge_w = metrics['battery']['discharge_current'] * metrics['battery']['voltage']
+    """Grid power is not a PI30 measurement; it is derived from the energy balance,
+    gated on the inverter's operating mode.
 
-    estimate = load_p + (batt_charge_w / INVERTER_EFFICIENCY) - solar_p - (batt_discharge_w * INVERTER_EFFICIENCY)
-
+    Battery mode ('B'): the load runs from the DC bus (PV + battery) and the grid feeds
+    nothing, so the residual is pure measurement noise -> 0. Any other mode with grid
+    present (Line mode with PV assist on this unit, standby, charging): the grid supplies
+    whatever the load needs beyond the PV/battery contribution, plus any AC charging.
+    That residual is real draw, so it is reported down to GRID_MIN_REPORT_W rather than
+    swallowed by a wide deadband. Off-grid units cannot export -> clamp >= 0.
+    """
     grid_voltage = metrics['grid']['voltage']
-    is_ac_charging = metrics['system']['is_ac_charging_on']
-
     if grid_voltage < GRID_PRESENT_MIN_VOLTAGE:
         return 0.0
 
-    deadband = max(GRID_NOISE_FLOOR_W, GRID_NOISE_FRACTION * (load_p + solar_p))
-    if estimate < deadband and not is_ac_charging:
+    is_ac_charging = metrics['system']['is_ac_charging_on']
+    if metrics['system'].get('mode') == 'B' and not is_ac_charging:
+        return 0.0
+
+    load_p = metrics['load']['active_power']
+    solar_p = metrics['solar']['power']
+    batt_v = metrics['battery']['voltage']
+    charge_w = metrics['battery']['charging_current'] * batt_v
+    discharge_w = metrics['battery']['discharge_current'] * batt_v
+
+    # Split PV between the battery (DC-DC) and the load (DC->AC); whatever charge the
+    # PV cannot cover came from the AC charger.
+    solar_to_batt = min(solar_p, charge_w / SCC_EFFICIENCY) if charge_w > 0 else 0.0
+    grid_charge_dc = max(0.0, charge_w - solar_to_batt * SCC_EFFICIENCY)
+    solar_to_load_dc = max(0.0, solar_p - solar_to_batt)
+
+    estimate = (
+        load_p
+        + grid_charge_dc / INVERTER_EFFICIENCY
+        - solar_to_load_dc * INVERTER_EFFICIENCY
+        - discharge_w * INVERTER_EFFICIENCY
+    )
+    if estimate < GRID_MIN_REPORT_W and not is_ac_charging:
         return 0.0
     return max(0.0, round(estimate, 1))
 
@@ -445,7 +468,9 @@ def _derive_charge_stage(metrics):
 
 
 def _derive_mode_from_flags(metrics):
-    """Fallback when QMOD unavailable."""
+    """Fallback when QMOD is unavailable or stale. Uses the bypass signature (output
+    voltage/frequency identical to input) to tell Line mode from Battery mode while the
+    grid is present; without grid, any activity means Battery mode."""
     s = metrics['system']
     if not s['is_switched_on']:
         return 'D'
@@ -455,16 +480,15 @@ def _derive_mode_from_flags(metrics):
     grid_present = metrics['grid']['voltage'] >= GRID_PRESENT_MIN_VOLTAGE
     load_p = metrics['load']['active_power']
     solar_p = metrics['solar']['power']
+    active = load_p > 0 or batt_discharging or solar_p > 5
 
-    if batt_discharging:
-        return 'B'
-    # Grid is present and carrying load without battery discharge → Line mode
-    # (e.g. battery full / float, solar insufficient, grid feeds the load).
-    if grid_present and load_p > solar_p + GRID_ESTIMATE_TOLERANCE_W:
-        return 'L'
-    if solar_p > 5:
-        return 'B'
-    return 'S'
+    if grid_present:
+        dv = abs(metrics['load']['voltage'] - metrics['grid']['voltage'])
+        df = abs(metrics['load']['frequency'] - metrics['grid']['frequency'])
+        if dv <= BYPASS_VOLTAGE_TOLERANCE_V and df <= BYPASS_FREQUENCY_TOLERANCE_HZ:
+            return 'L'
+        return 'B' if active else 'S'
+    return 'B' if active else 'S'
 
 
 def extract_system_metrics(parsed_data, mode=None, warnings=None):

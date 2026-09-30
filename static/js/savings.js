@@ -46,6 +46,7 @@
         renderHistory(payload.lifetime?.months || []);
         fillConfigForm(payload.config);
         renderSlabsEditor(payload.config);
+        renderTariffCheck(payload.tariff_check);
     }
 
     function renderKPIs(p) {
@@ -55,7 +56,9 @@
         const pb = p.payback || {};
 
         $('kpi-today').textContent = fmtPKR(t.savings_pkr);
-        $('kpi-today-kwh').textContent = fmtKWh(t.solar_kwh);
+        // Grid units actually displaced (load - grid); gross solar over-counts what the
+        // battery absorbed and never returned.
+        $('kpi-today-kwh').textContent = fmtKWh(t.avoided_grid_kwh ?? t.solar_kwh);
         $('kpi-today-rate').textContent = fmtRate(t.marginal_rate_pkr_per_kwh);
 
         $('kpi-month').textContent = fmtPKR(m.savings_pkr);
@@ -180,11 +183,41 @@
         `).join('');
     }
 
+    function renderTariffCheck(tc) {
+        const body = $('tariff-check-body');
+        const pill = $('tariff-check-pill');
+        if (!body || !pill) return;
+        const rows = (tc && tc.cycles) || [];
+        if (!rows.length) {
+            body.innerHTML = '<tr><td colspan="5" class="py-2 text-white/50">No cycles with a real bill amount yet — bootstrap your history or record a meter reading on the FESCO Bill page.</td></tr>';
+            pill.className = 'pill info';
+            pill.textContent = 'no data';
+            return;
+        }
+        body.innerHTML = rows.map(r => {
+            const tone = Math.abs(r.error_pct) <= 5 ? 'text-emerald-300' : Math.abs(r.error_pct) <= 15 ? 'text-amber-300' : 'text-red-300';
+            const sign = r.error_pct > 0 ? '+' : '';
+            return `<tr class="border-b border-white/5">
+                <td class="py-1.5">${r.label}</td>
+                <td class="text-right py-1.5">${fmtKWh(r.units)}</td>
+                <td class="text-right py-1.5">Rs ${fmtPKR(r.actual_pkr)}</td>
+                <td class="text-right py-1.5">Rs ${fmtPKR(r.model_pkr)}</td>
+                <td class="text-right py-1.5 ${tone}">${sign}${r.error_pct}%</td>
+            </tr>`;
+        }).join('');
+        const mae = tc.mean_abs_error_pct;
+        const bias = tc.bias_pct;
+        pill.className = 'pill ' + (mae <= 5 ? 'ok' : mae <= 15 ? 'warn' : 'danger');
+        pill.textContent = `avg error ${mae}% · bias ${bias > 0 ? '+' : ''}${bias}%`;
+    }
+
     // --- config form -----------------------------------------------------------
     function fillConfigForm(c) {
         if (!c) return;
         $('cfg-consumer-type').value = c.consumer_type || 'unprotected';
         $('cfg-sanctioned-load').value = c.sanctioned_load_kw ?? 3.3;
+        $('cfg-fix-kw').value = c.fix_charges_per_kw ?? 0;
+        $('cfg-fix-min').value = c.fix_charges_min_units ?? 300;
         $('cfg-fpa').value = c.fpa_per_unit ?? 0;
         $('cfg-qta').value = c.qtr_adjustment_per_unit ?? 0;
         $('cfg-fc').value = c.fc_surcharge_per_unit ?? 0;
@@ -258,6 +291,8 @@
         return {
             consumer_type: $('cfg-consumer-type').value,
             sanctioned_load_kw: Number($('cfg-sanctioned-load').value) || 0,
+            fix_charges_per_kw: Number($('cfg-fix-kw').value) || 0,
+            fix_charges_min_units: $('cfg-fix-min').value.trim() === '' ? 300 : Number($('cfg-fix-min').value),
             fpa_per_unit: Number($('cfg-fpa').value) || 0,
             qtr_adjustment_per_unit: Number($('cfg-qta').value) || 0,
             fc_surcharge_per_unit: Number($('cfg-fc').value) || 0,

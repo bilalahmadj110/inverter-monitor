@@ -92,7 +92,9 @@ def test_compute_today_marginal_rate_keys_off_cycle(tmp_db, seed_daily):
             self.db_path = db_path
 
         def get_summary(self, day=None):
-            return {"solar_kwh": 5.0, "grid_kwh": 2.0, "load_kwh": 7.0}
+            # 6 kWh produced but only 5 kWh displaced grid (load - grid): the other 1 kWh
+            # went into the battery and is not a saving.
+            return {"solar_kwh": 6.0, "grid_kwh": 2.0, "load_kwh": 7.0}
 
     cfg = _cycle_cfg()
     result = cost_savings.compute_today(
@@ -106,5 +108,32 @@ def test_compute_today_marginal_rate_keys_off_cycle(tmp_db, seed_daily):
     calendar_rate = lesco_tariff.marginal_rate(240.0, cfg)
     assert expected_rate != calendar_rate
     assert result["marginal_rate_pkr_per_kwh"] == expected_rate
-    assert result["solar_kwh"] == 5.0
+    assert result["solar_kwh"] == 6.0
+    assert result["avoided_grid_kwh"] == 5.0
     assert result["savings_pkr"] == round(5.0 * expected_rate, 2)
+
+
+def test_lifetime_from_cycles_ignores_pre_solar_history(tmp_db, seed_daily):
+    from freezegun import freeze_time
+    import fesco_cycles
+    store = fesco_cycles.CycleStore(tmp_db)
+    # Bootstrapped bill from a year before the panels went up ...
+    store.upsert_cycle({
+        "cycle_label": "Apr25", "start_date": "2025-03-27", "end_date": "2025-04-28",
+        "status": "closed", "units_actual": 171, "notes": "bootstrap",
+    })
+    # ... and one real cycle with readings.
+    store.upsert_cycle({
+        "cycle_label": "May26", "start_date": "2026-04-28", "end_date": "2026-05-26",
+        "status": "closed", "units_estimated": 50.0, "notes": "auto",
+    })
+    seed_daily("2026-05-10", solar_wh=100_000, grid_wh=50_000, load_wh=150_000)
+    cfg = _cycle_cfg()
+    cfg["system_start_date"] = "2026-04-19"
+    with freeze_time("2026-06-01"):
+        lt = cost_savings.compute_lifetime_from_cycles(tmp_db, cfg)
+    assert [m["month"] for m in lt["months"]] == ["May26"]
+    assert lt["system_start_date"] == "2026-04-28"
+    assert lt["days_elapsed"] == 35          # 28 Apr .. 1 Jun, not 430 days since Mar 2025
+    assert lt["total_solar_kwh"] == 100.0
+    assert lt["total_savings_pkr"] > 0

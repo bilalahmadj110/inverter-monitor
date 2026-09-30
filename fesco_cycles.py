@@ -20,6 +20,10 @@ import lesco_tariff
 logger = logging.getLogger(__name__)
 
 
+# How many elapsed cycles ensure_open_cycle will back-fill in one go when the
+# page has not been opened for a long time (24 = two years; a safety bound).
+MAX_BACKFILL_CYCLES = 24
+
 _CYCLE_COLUMNS = (
     "id", "cycle_label", "start_date", "end_date", "status",
     "units_estimated", "units_actual",
@@ -64,6 +68,18 @@ class CycleStore:
                 'CREATE INDEX IF NOT EXISTS idx_cycles_end_date '
                 'ON billing_cycles(end_date DESC)'
             )
+            # One-time cleanup: earlier auto-close code copied the inverter estimate into
+            # units_actual / bill_amount_actual, so every closed cycle looked meter-verified
+            # and estimate-vs-meter could never be compared. Un-copy those. Idempotent: rows
+            # touched here get notes='auto' and no longer match; meter entries use 'meter'.
+            conn.execute('''
+                UPDATE billing_cycles
+                   SET units_actual = NULL, bill_amount_actual = NULL, notes = 'auto'
+                 WHERE status = 'closed' AND notes IS NULL
+                   AND units_estimated IS NOT NULL
+                   AND units_actual = CAST(ROUND(units_estimated) AS INTEGER)
+                   AND (bill_amount_actual IS NULL OR bill_amount_actual = bill_amount_estimated)
+            ''')
             conn.commit()
 
     def list_cycles(self, limit: int = 24) -> list[dict[str, Any]]:
@@ -176,54 +192,90 @@ class CycleStore:
     ) -> dict[str, Any]:
         """Idempotently maintain exactly one 'open' cycle.
 
-        - If no open cycle exists → create one for today's bounds.
-        - If the open cycle's end_date < today → close it (auto-fill
-          units_estimated and bill_amount_estimated from daily_stats), then
-          create a new open cycle.
+        - No open cycle → create one for today's bounds.
+        - Open cycle whose end_date < today → close it (units/bill estimated
+          from daily_stats), then walk forward one reading day at a time,
+          back-filling any *elapsed* cycles nobody observed (as closed
+          estimates, only where readings exist), until reaching the cycle
+          that contains today — which becomes the new open cycle.
         """
+        target_day, weekend = fesco_bill._rule_params(cfg)
         with self._lock:
             existing_open = self._find_open_locked()
             if existing_open is not None:
-                end_iso = existing_open["end_date"]
-                end_d = _parse_iso(end_iso)
+                end_d = _parse_iso(existing_open["end_date"])
                 if end_d is not None and today <= end_d:
                     return existing_open
-                # Close the stale open cycle.
-                start_d = _parse_iso(existing_open["start_date"])
-                if start_d and end_d:
-                    energy = fesco_bill.aggregate_cycle(start_d, end_d, self.db_path)
-                    units_est = energy["grid_kwh"]
-                    bill_est = lesco_tariff.compute_bill(units_est, cfg)["total"]
-                else:
-                    units_est = existing_open.get("units_estimated") or 0
-                    bill_est = existing_open.get("bill_amount_estimated") or 0
-                # Auto-close drives both the estimate and the actual values.
-                # Going-forward cycles aren't manually entered — the inverter's
-                # own grid_kwh tracking is the source of truth. Manual entry
-                # remains available only for correcting bootstrapped history.
-                self._unlocked_upsert({
-                    **existing_open,
-                    "status": "closed",
-                    "units_estimated": round(units_est, 3),
-                    "bill_amount_estimated": round(bill_est, 2),
-                    "units_actual": int(round(units_est)),
-                    "bill_amount_actual": round(bill_est, 2),
-                })
+                self._close_locked(existing_open, cfg)
 
-            # Create the new open cycle.
+            last_closed = fesco_bill._last_closed_end_date(self.db_path)
+            if last_closed is None:
+                start, end = fesco_bill.compute_cycle_boundaries(today, cfg, self.db_path)
+                return self._open_locked(start, end)
+
+            cursor = last_closed
+            for _ in range(MAX_BACKFILL_CYCLES):
+                end = fesco_bill.next_reading_day_after(cursor, target_day, weekend)
+                start = cursor + timedelta(days=1)
+                if end >= today:
+                    return self._open_locked(start, end)
+                label = fesco_bill.cycle_label_for(end)
+                if self.get_cycle(label) is None:
+                    energy = fesco_bill.aggregate_cycle(start, end, self.db_path)
+                    if energy["load_kwh"] > 0:
+                        units_est = energy["grid_kwh"]
+                        self._unlocked_upsert({
+                            "cycle_label": label,
+                            "start_date": start.isoformat(),
+                            "end_date": end.isoformat(),
+                            "status": "closed",
+                            "units_estimated": round(units_est, 3),
+                            "bill_amount_estimated": round(
+                                lesco_tariff.compute_bill(units_est, cfg)["total"], 2),
+                            "notes": "auto",
+                        })
+                        logger.info(
+                            f"Back-filled elapsed billing cycle {label} ({start} -> {end}) "
+                            f"with {units_est:.1f} kWh estimated")
+                cursor = end
+
             start, end = fesco_bill.compute_cycle_boundaries(today, cfg, self.db_path)
-            label = fesco_bill.cycle_label_for(end)
-            existing = self.get_cycle(label)
-            if existing and existing["status"] == "closed":
-                # Reopen unlikely but possible (user-edited dates); leave it closed.
-                return existing
-            self._unlocked_upsert({
-                "cycle_label": label,
-                "start_date": start.isoformat(),
-                "end_date": end.isoformat(),
-                "status": "open",
-            })
-            return self.get_cycle(label)
+            return self._open_locked(start, end)
+
+    def _close_locked(self, cycle: dict[str, Any], cfg: dict[str, Any]) -> None:
+        """Close `cycle` with the inverter-derived estimate. units_actual is left
+        alone (None until the user records the meter figure from the bill) so
+        estimate and meter stay distinguishable and can calibrate each other."""
+        start_d = _parse_iso(cycle["start_date"])
+        end_d = _parse_iso(cycle["end_date"])
+        if start_d and end_d:
+            energy = fesco_bill.aggregate_cycle(start_d, end_d, self.db_path)
+            units_est = energy["grid_kwh"]
+            bill_est = lesco_tariff.compute_bill(units_est, cfg)["total"]
+        else:
+            units_est = cycle.get("units_estimated") or 0
+            bill_est = cycle.get("bill_amount_estimated") or 0
+        self._unlocked_upsert({
+            **cycle,
+            "status": "closed",
+            "units_estimated": round(units_est, 3),
+            "bill_amount_estimated": round(bill_est, 2),
+            "notes": cycle.get("notes") or "auto",
+        })
+
+    def _open_locked(self, start: date, end: date) -> dict[str, Any]:
+        label = fesco_bill.cycle_label_for(end)
+        existing = self.get_cycle(label)
+        if existing and existing["status"] == "closed":
+            # Reopen unlikely but possible (user-edited dates); leave it closed.
+            return existing
+        self._unlocked_upsert({
+            "cycle_label": label,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "status": "open",
+        })
+        return self.get_cycle(label)
 
     def _find_open_locked(self) -> dict[str, Any] | None:
         with sqlite3.connect(self.db_path) as conn:

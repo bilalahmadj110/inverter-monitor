@@ -2,7 +2,9 @@
 
 Real-time monitoring dashboard for MPP Solar / Voltronic-style hybrid inverters (PI30 protocol) with a live WebSocket-driven UI, historical statistics, and CSV export.
 
-The service talks to the inverter over USB HID using [`mpp-solar`](https://github.com/jblance/mpp-solar), continuously polls `QPIGS` (status), and polls `QMOD` / `QPIWS` (mode + warnings) on a slower cadence so the fast loop isn't blocked. Readings are cached, streamed to the browser via Socket.IO, and persisted for daily / monthly / yearly aggregates.
+The service talks to the inverter directly over USB HID (PI30 framing + CRC in `lib/pi30_hid.py`, no subprocess), continuously polls `QPIGS` (status), interleaves `QMOD` (mode) every ~20 s because the mode gates the grid-power estimate, and fetches `QPIWS` / `QPIRI` (warnings + config) on demand. Readings are cached, streamed to the browser via Socket.IO, and persisted for daily / monthly / yearly aggregates.
+
+Grid power is **not** a PI30 measurement. It is derived from the energy balance (load + AC-charging − PV-to-load − battery discharge, with conversion efficiencies) and forced to zero in Battery mode. Treat monthly grid kWh as an estimate and record the units from the paper bill on the FESCO Bill page so the two can be compared.
 
 ## Features
 
@@ -45,12 +47,12 @@ Paths and tuning live at the top of [`inverter_status.py`](inverter_status.py):
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `MPP_BIN` | `/home/<user>/.../.venv/bin/mpp-solar` | Path to the `mpp-solar` executable |
 | `MPP_PORT` | `/dev/hidraw0` | HID device the inverter is exposed on |
-| `MPP_PROTOCOL` | `PI30` | Inverter protocol |
-| `INVERTER_EFFICIENCY` | `0.92` | Used to estimate grid / flow balance |
+| `INVERTER_EFFICIENCY` | `0.92` | DC↔AC conversion factor in the grid-power energy balance |
+| `SCC_EFFICIENCY` | `0.97` | PV→battery (MPPT) factor in the same balance |
+| `GRID_MIN_REPORT_W` | `30` | Residuals below this are inside measurement resolution and read as 0 |
 
-Poll cadences live in [`continuous_reader.py`](continuous_reader.py) (`CYCLE_SECONDS`, `EXTRAS_INTERVAL_SECONDS`).
+Poll cadences live in [`continuous_reader.py`](continuous_reader.py) (`MODE_POLL_INTERVAL_SECONDS`, `MODE_STALE_SECONDS`). The SQLite store runs in WAL mode; only the flush thread writes.
 
 ## Running as a service (systemd)
 

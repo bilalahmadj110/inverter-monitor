@@ -136,13 +136,18 @@ def compute_today(
     cycle_energy = fesco_bill.aggregate_cycle(start, min(today, end), stats_manager.db_path)
 
     rate_now = lesco_tariff.marginal_rate(cycle_energy["grid_kwh"], config)
-    today_savings = day_energy["solar_kwh"] * rate_now
+    # Value the grid units solar actually displaced (load - grid), not gross
+    # production: solar that went into the battery and never came back out
+    # (float/absorption losses, ~20% of production on this system) saved nothing.
+    avoided_kwh = max(0.0, day_energy["load_kwh"] - day_energy["grid_kwh"])
+    today_savings = avoided_kwh * rate_now
 
     return {
         "date": today_str,
         "solar_kwh": round(day_energy["solar_kwh"], 3),
         "grid_kwh":  round(day_energy["grid_kwh"], 3),
         "load_kwh":  round(day_energy["load_kwh"], 3),
+        "avoided_grid_kwh": round(avoided_kwh, 3),
         "marginal_rate_pkr_per_kwh": rate_now,
         "savings_pkr": round(today_savings, 2),
     }
@@ -321,6 +326,7 @@ def build_full_payload(stats_manager, cost_config) -> dict[str, Any]:
     lifetime = compute_lifetime_from_cycles(stats_manager.db_path, cfg)
     payback = compute_payback(cfg.get("install_cost_pkr") or 0, lifetime["avg_daily_savings_pkr"])
     projection = compute_slab_projection(stats_manager.db_path, cfg, today)
+    tariff_check = compute_tariff_check(stats_manager.db_path, cfg)
 
     return {
         "config": cfg,
@@ -333,6 +339,49 @@ def build_full_payload(stats_manager, cost_config) -> dict[str, Any]:
         "lifetime": lifetime,
         "payback": payback,
         "projection": projection,
+        "tariff_check": tariff_check,
+    }
+
+
+def _parse_date(s: str | None) -> date | None:
+    if not s:
+        return None
+    try:
+        return date.fromisoformat(str(s).strip().split("T")[0])
+    except ValueError:
+        return None
+
+
+def compute_tariff_check(db_path: str, cfg: dict[str, Any]) -> dict[str, Any]:
+    """Score the configured tariff against every closed cycle that has a real
+    bill amount and real meter units (bootstrapped history or meter-recorded).
+    Returns model-vs-actual per cycle plus mean absolute error and signed bias,
+    so the tariff can be tuned until it reproduces the household's own bills.
+    Oldest first."""
+    import fesco_cycles
+    rows = []
+    cycles = fesco_cycles.CycleStore(db_path).list_cycles(limit=240)
+    for c in reversed(cycles):
+        if c["status"] != "closed":
+            continue
+        units, actual = c.get("units_actual"), c.get("bill_amount_actual")
+        if units is None or actual is None or actual <= 0:
+            continue
+        model = lesco_tariff.compute_bill(units, cfg)["total"]
+        rows.append({
+            "label": c["cycle_label"],
+            "units": units,
+            "actual_pkr": round(float(actual), 2),
+            "model_pkr": round(model, 2),
+            "error_pct": round(100.0 * (model - actual) / actual, 1),
+        })
+    if not rows:
+        return {"cycles": [], "mean_abs_error_pct": None, "bias_pct": None}
+    errs = [r["error_pct"] for r in rows]
+    return {
+        "cycles": rows,
+        "mean_abs_error_pct": round(sum(abs(e) for e in errs) / len(errs), 1),
+        "bias_pct": round(sum(errs) / len(errs), 1),
     }
 
 
@@ -342,6 +391,12 @@ def compute_lifetime_from_cycles(db_path: str, cfg: dict[str, Any]) -> dict[str,
     import fesco_cycles
     store = fesco_cycles.CycleStore(db_path)
     cycles = [c for c in store.list_cycles(limit=240) if c["status"] == "closed"]
+    system_start = _parse_date(cfg.get("system_start_date"))
+    if system_start is not None:
+        # Bootstrapped pre-solar history has no readings behind it; letting it
+        # into the window only stretches days_elapsed and dilutes the average.
+        cycles = [c for c in cycles
+                  if (_parse_date(c["end_date"]) or system_start) >= system_start]
     if not cycles:
         return compute_lifetime(db_path, cfg, cfg.get("system_start_date"))
 
@@ -369,6 +424,8 @@ def compute_lifetime_from_cycles(db_path: str, cfg: dict[str, Any]) -> dict[str,
         total_solar += result["energy"]["solar_kwh"]
 
     first = date.fromisoformat(cycles[0]["start_date"])
+    if system_start is not None and system_start > first:
+        first = system_start
     today = date.today()
     days_elapsed = max(1, (today - first).days + 1)
 

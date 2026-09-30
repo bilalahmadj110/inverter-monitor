@@ -388,7 +388,7 @@ class InverterDashboard {
 
     async exportData() {
         try {
-            const response = await fetch('/export-data');
+            const response = await fetch('/export-readings?format=csv');
             const blob = await response.blob();
             
             const url = window.URL.createObjectURL(blob);

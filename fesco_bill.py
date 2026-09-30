@@ -65,6 +65,28 @@ def _prev_month(d: date) -> date:
     return date(d.year, d.month - 1, 1)
 
 
+def _reading_day_for_month(year: int, month: int, target_day: int, weekend: bool) -> date:
+    """Rule-derived reading day for one calendar month (clamped + weekend-rolled)."""
+    return _apply_weekend_rule(_clamp_to_month_end(year, month, target_day), weekend)
+
+
+def _rule_params(cfg: dict[str, Any]) -> tuple[int, bool]:
+    target_day = int(cfg.get("reading_day_of_month", 26) or 26)
+    weekend = bool(cfg.get("weekend_rolls_to_monday", True))
+    return target_day, weekend
+
+
+def next_reading_day_after(d: date, target_day: int, weekend: bool) -> date:
+    """First rule-derived reading day strictly after `d`."""
+    anchor = date(d.year, d.month, 1)
+    for _ in range(14):
+        candidate = _reading_day_for_month(anchor.year, anchor.month, target_day, weekend)
+        if candidate > d:
+            return candidate
+        anchor = _next_month(anchor)
+    raise ValueError(f"no reading day found after {d}")
+
+
 def _last_closed_end_date(db_path: str) -> date | None:
     """Most recent end_date among closed cycles, or None.
 
@@ -92,36 +114,41 @@ def compute_cycle_boundaries(
 ) -> tuple[date, date]:
     """Return (start_date, end_date) for the cycle containing `today`.
 
-    end_date = next reading-day on or after today (clamped to month-end,
-               weekend-adjusted if the cfg flag is on).
-    start_date = day after the previous closed cycle's end_date if one
-                 exists, else day after the rule-derived previous reading.
+    end_date   = next rule-derived reading day on or after today (clamped to
+                 month-end, weekend-adjusted if the cfg flag is on).
+    start_date = day after the previous rule-derived reading day — unless the
+                 most recent *closed* cycle is the immediately preceding one
+                 (its end_date lies between the two previous rule days), in
+                 which case its end_date wins so a user-overridden reading date
+                 carries through. A closed cycle older than that is ignored:
+                 anchoring on it used to stretch the "current" cycle across
+                 every month in which nobody opened the FESCO page.
     """
-    target_day = int(cfg.get("reading_day_of_month", 26) or 26)
-    weekend = bool(cfg.get("weekend_rolls_to_monday", True))
+    target_day, weekend = _rule_params(cfg)
 
-    # Step 1: walk forward by month until candidate >= today.
-    iter_anchor = date(today.year, today.month, 1)
+    # Start one month back so a reading day that the weekend rule rolled into
+    # this month (e.g. Sat 31 Jan -> Mon 2 Feb) is still a candidate.
+    iter_anchor = _prev_month(date(today.year, today.month, 1))
     while True:
-        candidate = _clamp_to_month_end(iter_anchor.year, iter_anchor.month, target_day)
-        candidate = _apply_weekend_rule(candidate, weekend)
+        candidate = _reading_day_for_month(iter_anchor.year, iter_anchor.month, target_day, weekend)
         if candidate >= today:
             end = candidate
             break
         iter_anchor = _next_month(iter_anchor)
 
-    # Step 2: prefer a closed cycle's end_date if it predates `end`.
+    # Walk back from the *unrolled* month anchor (iter_anchor), not from `end`:
+    # `end` may have rolled into the next month via the weekend rule.
+    prev_anchor = _prev_month(iter_anchor)
+    prev_reading = _reading_day_for_month(prev_anchor.year, prev_anchor.month, target_day, weekend)
+    prev_prev_anchor = _prev_month(prev_anchor)
+    prev_prev_reading = _reading_day_for_month(
+        prev_prev_anchor.year, prev_prev_anchor.month, target_day, weekend)
+
     last_closed = _last_closed_end_date(db_path)
-    if last_closed is not None and last_closed < end:
+    if last_closed is not None and prev_prev_reading < last_closed < end:
         return last_closed + timedelta(days=1), end
 
-    # Fallback: rule-derived previous reading. Walk back from the *unrolled*
-    # month anchor (iter_anchor), not from `end` — `end` may have rolled into
-    # the next month via the weekend rule, which would give a wrong previous.
-    prev_anchor = _prev_month(iter_anchor)
-    prev_candidate = _clamp_to_month_end(prev_anchor.year, prev_anchor.month, target_day)
-    prev_candidate = _apply_weekend_rule(prev_candidate, weekend)
-    start = prev_candidate + timedelta(days=1)
+    start = prev_reading + timedelta(days=1)
     assert start <= end, f"inverted cycle: {start} > {end}"
     return start, end
 
@@ -156,6 +183,31 @@ _MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 def cycle_label_for(end: date) -> str:
     """Convert an end_date to FESCO-style 'Mar26' label."""
     return f"{_MONTH_ABBR[end.month - 1]}{end.year % 100:02d}"
+
+
+def compute_calibration(cycles: list[dict[str, Any]]) -> dict[str, Any]:
+    """Meter-vs-inverter calibration from closed cycles that carry BOTH a meter
+    reading (units_actual, recorded from the bill) and the inverter's estimate
+    (units_estimated). factor = sum(actual) / sum(estimated); >1 means the
+    meter bills more than the energy balance sees (inverter self-consumption,
+    conversion losses, loads wired around the inverter). None until at least
+    one such cycle exists. Purely informational — nothing applies it."""
+    used = []
+    for c in cycles:
+        actual, est = c.get("units_actual"), c.get("units_estimated")
+        if actual is None or est is None or est <= 0:
+            continue
+        used.append((c["cycle_label"], float(actual), float(est)))
+    if not used:
+        return {"factor": None, "cycles": []}
+    factor = sum(a for _, a, _ in used) / sum(e for _, _, e in used)
+    return {
+        "factor": round(factor, 4),
+        "cycles": [
+            {"label": lbl, "actual": a, "estimated": round(e, 1), "ratio": round(a / e, 3)}
+            for lbl, a, e in used
+        ],
+    }
 
 
 def _label_minus_one_year(label: str) -> str | None:
