@@ -280,7 +280,7 @@ class InverterDashboard {
         const tbody = document.getElementById('data-table-body');
         
         if (data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center">No data available</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">No data available</td></tr>';
             return;
         }
         

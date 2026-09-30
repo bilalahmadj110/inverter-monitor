@@ -10,15 +10,10 @@ class SolarFlowDashboard {
         this.isConnected = false;
         this.dismissedWarningKeys = new Set();
 
-        this.MODE_STYLE = {
-            L: { label: 'Line Mode',    bg: 'bg-blue-500/25',    text: 'text-blue-100',    dot: 'bg-blue-300' },
-            B: { label: 'Battery Mode', bg: 'bg-emerald-500/25', text: 'text-emerald-100', dot: 'bg-emerald-300' },
-            S: { label: 'Standby',      bg: 'bg-slate-500/25',   text: 'text-slate-100',   dot: 'bg-slate-300' },
-            P: { label: 'Power On',     bg: 'bg-sky-500/25',     text: 'text-sky-100',     dot: 'bg-sky-300' },
-            H: { label: 'Power Saving', bg: 'bg-indigo-500/25',  text: 'text-indigo-100',  dot: 'bg-indigo-300' },
-            C: { label: 'Charging',     bg: 'bg-amber-500/25',   text: 'text-amber-100',   dot: 'bg-amber-300' },
-            F: { label: 'Fault',        bg: 'bg-red-500/30',     text: 'text-red-100',     dot: 'bg-red-400' },
-            D: { label: 'Shutdown',     bg: 'bg-gray-600/30',    text: 'text-gray-100',    dot: 'bg-gray-300' },
+        // Mode code -> label; the pill's colour comes from app.css via its data-mode attribute.
+        this.MODE_LABEL = {
+            L: 'Line mode', B: 'Battery mode', S: 'Standby', P: 'Power on',
+            H: 'Power saving', C: 'Charging', F: 'Fault', D: 'Shutdown',
         };
 
         this.latestMetrics = {};
@@ -132,6 +127,7 @@ class SolarFlowDashboard {
         this.updateElement('load-apparent', Math.round(load.apparent_power || 0));
         this.updateElement('load-pf', (load.power_factor || 0).toFixed(2));
         this.updateElement('load-percentage', Math.round(load.percentage || 0));
+        this.updateElement('load-percentage-status', Math.round(load.percentage || 0));
     }
 
     updateBatteryFill(percentage) {
@@ -179,17 +175,12 @@ class SolarFlowDashboard {
         const label = document.getElementById('mode-pill-label');
         if (!pill || !label) return;
 
-        const style = this.MODE_STYLE[system.mode] || this.MODE_STYLE.S;
-        Object.values(this.MODE_STYLE).forEach((s) => {
-            pill.classList.remove(s.bg, s.text);
-            if (dot) dot.classList.remove(s.dot);
-        });
-        pill.classList.add(style.bg, style.text);
-        if (dot) dot.classList.add(style.dot);
-        label.textContent = system.mode_label || style.label;
+        const mode = this.MODE_LABEL[system.mode] ? system.mode : 'S';
+        pill.dataset.mode = mode;
+        if (dot) dot.classList.add('dot');
+        label.textContent = system.mode_label || this.MODE_LABEL[mode];
         const isDerived = system.mode_source === 'derived';
-        pill.classList.toggle('border-dashed', isDerived);
-        pill.classList.toggle('border-solid', !isDerived);
+        pill.classList.toggle('is-derived', isDerived);
         pill.title = isDerived
             ? 'Inverter mode derived from status flags (QMOD unavailable)'
             : 'Inverter mode reported by QMOD';
@@ -245,12 +236,8 @@ class SolarFlowDashboard {
 
         banner.classList.remove('hidden');
         const hasFault = warnings.some((w) => w.severity === 'fault');
-        box.className = 'rounded-lg border p-3 flex items-start gap-3 ' +
-            (hasFault
-                ? 'bg-red-500/15 border-red-400/40 text-red-100'
-                : 'bg-amber-500/15 border-amber-400/40 text-amber-100');
-        if (icon) icon.className = 'fas mt-1 ' +
-            (hasFault ? 'fa-circle-exclamation text-red-300' : 'fa-triangle-exclamation text-amber-300');
+        box.className = 'banner ' + (hasFault ? 'banner-danger' : 'banner-warn');
+        if (icon) icon.className = 'fas ' + (hasFault ? 'fa-circle-exclamation' : 'fa-triangle-exclamation');
         title.textContent = hasFault
             ? `${warnings.length} active ${warnings.length === 1 ? 'fault' : 'faults/warnings'}`
             : `${warnings.length} active warning${warnings.length === 1 ? '' : 's'}`;
@@ -432,8 +419,7 @@ class SolarFlowDashboard {
         const label = document.getElementById('extras-refresh-label');
         if (!btn) return;
         btn.disabled = loading;
-        btn.classList.toggle('opacity-60', loading);
-        btn.classList.toggle('cursor-wait', loading);
+        btn.classList.toggle('is-loading', loading);
         if (icon) icon.classList.toggle('fa-spin', loading);
         if (label) label.textContent = loading ? 'Reading inverter…' : 'Refresh status';
     }
@@ -478,13 +464,13 @@ class SolarFlowDashboard {
     buildModalHTML(component) {
         const m = this.latestMetrics || {};
         const c = this.latestConfig || {};
-        const close = `<button class="modal-close text-white/60 hover:text-white ml-auto" aria-label="Close"><i class="fas fa-times text-lg"></i></button>`;
+        const close = `<button class="modal-close" aria-label="Close"><i class="fas fa-times"></i></button>`;
 
         if (component === 'solar') {
             const s = m.solar || {};
             return `
-                <div class="modal-head"><div class="icon-ring" style="background: rgba(252,211,77,0.15); color: #FCD34D"><i class="fas fa-solar-panel text-xl"></i></div>
-                    <div><div class="text-white font-semibold">Solar (PV)</div><div class="text-white/50 text-xs">Live readings</div></div>${close}</div>
+                <div class="modal-head"><div class="icon-ring" style="--ring: var(--solar)"><i class="fas fa-solar-panel"></i></div>
+                    <div><div class="modal-title">Solar (PV)</div><div class="modal-sub">Live readings</div></div>${close}</div>
                 <div class="modal-body">
                     <section><h3>Now</h3>
                         <div class="stat-grid">
@@ -495,7 +481,7 @@ class SolarFlowDashboard {
                         </div>
                     </section>
                     <section><h3>Notes</h3>
-                        <div class="text-white/60 text-sm">PV settings on this inverter are read-only. Output / charger routing is controlled from the <b>Load</b> and <b>Battery</b> panels.</div>
+                        <div class="note">PV settings on this inverter are read-only. Output / charger routing is controlled from the <b>Load</b> and <b>Battery</b> panels.</div>
                     </section>
                 </div>`;
         }
@@ -503,8 +489,8 @@ class SolarFlowDashboard {
         if (component === 'grid') {
             const g = m.grid || {};
             return `
-                <div class="modal-head"><div class="icon-ring" style="background: rgba(96,165,250,0.15); color: #60A5FA"><i class="fas fa-plug text-xl"></i></div>
-                    <div><div class="text-white font-semibold">Grid</div><div class="text-white/50 text-xs">Utility input</div></div>${close}</div>
+                <div class="modal-head"><div class="icon-ring" style="--ring: var(--grid)"><i class="fas fa-plug"></i></div>
+                    <div><div class="modal-title">Grid</div><div class="modal-sub">Utility input</div></div>${close}</div>
                 <div class="modal-body">
                     <section><h3>Now</h3>
                         <div class="stat-grid">
@@ -515,7 +501,7 @@ class SolarFlowDashboard {
                         </div>
                     </section>
                     <section><h3>Notes</h3>
-                        <div class="text-white/60 text-sm">Grid-related write operations (input voltage range, AC charging current) aren't exposed yet. The readings above are live from the inverter.</div>
+                        <div class="note">Grid-related write operations (input voltage range, AC charging current) aren't exposed yet. The readings above are live from the inverter.</div>
                     </section>
                 </div>`;
         }
@@ -531,12 +517,12 @@ class SolarFlowDashboard {
             ];
             const choices = opts.map((o) => `
                 <button class="choice-btn ${current === o.key ? 'current' : ''}" data-action="set-output-priority" data-mode="${o.key}">
-                    <div class="name">${o.name}${current === o.key ? '<i class="fas fa-check text-emerald-400 text-xs ml-1"></i>' : ''}</div>
+                    <div class="name">${o.name}${current === o.key ? '<i class="fas fa-check tick"></i>' : ''}</div>
                     <div class="desc">${o.desc}</div>
                 </button>`).join('');
             return `
-                <div class="modal-head"><div class="icon-ring" style="background: rgba(167,139,250,0.15); color: #A78BFA"><i class="fas fa-house text-xl"></i></div>
-                    <div><div class="text-white font-semibold">Load (Output)</div><div class="text-white/50 text-xs">House consumption</div></div>${close}</div>
+                <div class="modal-head"><div class="icon-ring" style="--ring: var(--load)"><i class="fas fa-house"></i></div>
+                    <div><div class="modal-title">Load (Output)</div><div class="modal-sub">House consumption</div></div>${close}</div>
                 <div class="modal-body">
                     <section><h3>Now</h3>
                         <div class="stat-grid">
@@ -547,11 +533,11 @@ class SolarFlowDashboard {
                         </div>
                     </section>
                     <section><h3>Output Source Priority</h3>
-                        <div class="text-white/60 text-xs mb-2">Where the load gets its power from. Current: <span class="text-white font-medium">${current}</span></div>
+                        <div class="note small">Where the load gets its power from. Current: <span class="v-strong">${current}</span></div>
                         <div class="choice-grid">${choices}</div>
                     </section>
                     <section><h3>Output Frequency</h3>
-                        <div class="text-white/60 text-xs mb-2">AC output frequency. Match your appliances / region.</div>
+                        <div class="note small">AC output frequency. Match your appliances / region.</div>
                         <div class="seg">
                             <button data-action="set-param" data-param="output_frequency" data-value="50" class="${freq === 50 ? 'current' : ''}">50 Hz</button>
                             <button data-action="set-param" data-param="output_frequency" data-value="60" class="${freq === 60 ? 'current' : ''}">60 Hz</button>
@@ -576,13 +562,13 @@ class SolarFlowDashboard {
             ];
             const choices = opts.map((o) => `
                 <button class="choice-btn ${current === o.key ? 'current' : ''}" data-action="set-charger-priority" data-mode="${o.key}">
-                    <div class="name">${o.name}${current === o.key ? '<i class="fas fa-check text-emerald-400 text-xs ml-1"></i>' : ''}</div>
+                    <div class="name">${o.name}${current === o.key ? '<i class="fas fa-check tick"></i>' : ''}</div>
                     <div class="desc">${o.desc}</div>
                 </button>`).join('');
             const dir = b.direction || 'idle';
             return `
-                <div class="modal-head"><div class="icon-ring" style="background: rgba(52,211,153,0.15); color: #34D399"><i class="fas fa-car-battery text-xl"></i></div>
-                    <div><div class="text-white font-semibold">Battery</div><div class="text-white/50 text-xs">Storage</div></div>${close}</div>
+                <div class="modal-head"><div class="icon-ring" style="--ring: var(--battery)"><i class="fas fa-car-battery"></i></div>
+                    <div><div class="modal-title">Battery</div><div class="modal-sub">Storage</div></div>${close}</div>
                 <div class="modal-body">
                     <section><h3>Now</h3>
                         <div class="stat-grid">
@@ -593,13 +579,13 @@ class SolarFlowDashboard {
                         </div>
                     </section>
                     <section><h3>Charger Source Priority</h3>
-                        <div class="text-white/60 text-xs mb-2">What's allowed to charge the battery. Current: <span class="text-white font-medium">${current}</span></div>
+                        <div class="note small">What's allowed to charge the battery. Current: <span class="v-strong">${current}</span></div>
                         <div class="choice-grid">${choices}</div>
                     </section>
                     <section><h3>Battery Settings</h3>
-                        <div class="text-white/50 text-[11px] mb-2">
+                        <div class="note small">
                             Each change is written to the inverter and read back.
-                            Nominal system: <span class="text-white/70">${c.battery_nominal_voltage ?? '—'} V</span>
+                            Nominal system: <span class="v-strong">${c.battery_nominal_voltage ?? '—'} V</span>
                         </div>
                         ${this.batteryTypeRow(c.battery_type)}
                         ${this.currentRow('Max Charge Current', 'max_charge_current', 'max_charging_current', c.max_charging_current)}
@@ -620,10 +606,10 @@ class SolarFlowDashboard {
             const rows = (c.rows || []);
             const rowsHTML = rows.length
                 ? rows.map((r) => `<div class="info-row"><span class="k">${r.label}</span><span class="v">${r.value}${r.unit ? ' ' + r.unit : ''}</span></div>`).join('')
-                : '<div class="text-white/50 text-sm">Loading…</div>';
+                : '<div class="note">Loading…</div>';
             return `
-                <div class="modal-head"><div class="icon-ring" style="background: rgba(251,191,36,0.15); color: #FBBF24"><i class="fas fa-microchip text-xl"></i></div>
-                    <div><div class="text-white font-semibold">Inverter</div><div class="text-white/50 text-xs">System</div></div>${close}</div>
+                <div class="modal-head"><div class="icon-ring" style="--ring: var(--warn)"><i class="fas fa-microchip"></i></div>
+                    <div><div class="modal-title">Inverter</div><div class="modal-sub">System</div></div>${close}</div>
                 <div class="modal-body">
                     <section><h3>Now</h3>
                         <div class="stat-grid">
@@ -892,6 +878,8 @@ class SolarFlowDashboard {
 
     updateConnectionStatus(status) {
         this.updateElement('connection-status', status);
+        const dot = document.getElementById('live-dot');
+        if (dot) dot.classList.toggle('off', status !== 'Connected');
     }
 
     updateLastUpdateTime() {

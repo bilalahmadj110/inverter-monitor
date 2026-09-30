@@ -216,3 +216,33 @@ def test_relay_small_or_identity_reply_is_single_plain_frame():
     assert len(frames) == 1 and frames[0]["enc"] == "identity" and frames[0]["data"] == '{"error":"x"}'
     frames = list(aws_relay.encode_reply(2, 200, "text/csv", b"a,b\n" * 50_000, "identity"))
     assert len(frames) == 4 and "".join(f["data"] for f in frames) == "a,b\n" * 50_000
+
+
+def test_local_app_refreshes_expired_csrf_token(monkeypatch):
+    """A POST that Flask rejects with 'CSRF token has expired' is retried once with a token
+    read fresh from the dashboard page (the relay used to keep the login-time token forever)."""
+    import aws_relay
+    app = aws_relay.LocalApp()
+    app._cookie = "session=abc"
+    app._csrf = "stale"
+    app._csrf_at = time.monotonic()
+    calls = []
+
+    def fake_open(req, timeout=60):
+        calls.append((req.get_method(), req.full_url, req.get_header("X-csrftoken")))
+        if req.get_method() == "GET":
+            return 200, _Headers(), b'<meta name="csrf-token" content="fresh">'
+        if req.get_header("X-csrftoken") == "stale":
+            return 400, _Headers(), b"<h1>Bad Request</h1><p>The CSRF token has expired.</p>"
+        return 200, _Headers(), b'{"success": true}'
+
+    monkeypatch.setattr(app, "_open", fake_open)
+    status, ctype, payload, _ = app.request("POST", "/refresh-extras")
+    assert status == 200 and json.loads(payload)["success"] is True
+    assert [c[0] for c in calls] == ["POST", "GET", "POST"]
+    assert calls[-1][2] == "fresh" and app._csrf == "fresh"
+
+
+class _Headers(dict):
+    def get_all(self, name):
+        return []

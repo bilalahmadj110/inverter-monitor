@@ -45,7 +45,13 @@
             this.connect();
         }
 
-        on(ev, cb) { (this.handlers[ev] = this.handlers[ev] || []).push(cb); return this; }
+        on(ev, cb) {
+            (this.handlers[ev] = this.handlers[ev] || []).push(cb);
+            // Pages register their handlers on DOMContentLoaded, often after the relay has
+            // already said hello; replay the connect so they never sit on "Connecting…".
+            if (ev === 'connect' && this.connected) { try { cb(); } catch (e) { console.error('relay handler', ev, e); } }
+            return this;
+        }
         off(ev, cb) { this.handlers[ev] = (this.handlers[ev] || []).filter((h) => h !== cb); return this; }
         _fire(ev, data) {
             for (const cb of (this.handlers[ev] || [])) {

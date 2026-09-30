@@ -4,365 +4,214 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Savings · Solar Energy System Monitor</title>
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/solar-panel.svg') }}">
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <style>
-        :root { color-scheme: dark; }
-        html, body { color-scheme: dark; }
-        input, select, textarea, button { color-scheme: dark; color: #fff; }
-        ::placeholder { color: rgba(255, 255, 255, 0.55); opacity: 1; }
-        select option { background-color: #0f172a; color: #fff; }
-        input[type="number"], input[type="text"], input[type="date"], select, textarea {
-            background-color: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.18);
-            border-radius: 0.5rem;
-            padding: 0.5rem 0.75rem;
-            color: #fff;
-            width: 100%;
-        }
-        input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(0.7); cursor: pointer; }
-        .stat-card {
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.10);
-            border-radius: 0.75rem;
-            padding: 1rem 1.1rem;
-        }
-        .big-number { font-size: 2rem; font-weight: 700; line-height: 1.05; color: #fff; }
-        .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(255,255,255,0.55); }
-        .row { display: flex; justify-content: space-between; padding: 0.35rem 0; border-bottom: 1px dashed rgba(255,255,255,0.07); font-size: 0.85rem; }
-        .row:last-child { border-bottom: none; }
-        .row .k { color: rgba(255,255,255,0.65); }
-        .row .v { color: #fff; font-weight: 500; }
-        .pill {
-            display: inline-flex; align-items: center; gap: 0.4rem;
-            font-size: 0.72rem; padding: 0.2rem 0.55rem; border-radius: 999px;
-        }
-        .pill.warn  { background: rgba(245, 158, 11, 0.18); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.35); }
-        .pill.danger{ background: rgba(239, 68, 68, 0.18); color: #fecaca; border: 1px solid rgba(239, 68, 68, 0.35); }
-        .pill.ok    { background: rgba(52, 211, 153, 0.18); color: #a7f3d0; border: 1px solid rgba(52, 211, 153, 0.35); }
-        .pill.info  { background: rgba(96, 165, 250, 0.18); color: #bfdbfe; border: 1px solid rgba(96, 165, 250, 0.35); }
-        details > summary { cursor: pointer; list-style: none; }
-        details > summary::-webkit-details-marker { display: none; }
-        details[open] > summary .chev { transform: rotate(90deg); }
-        .chev { transition: transform 0.15s ease; display: inline-block; }
-        .slab-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem; }
-        .ai-msg.user { background: rgba(96, 165, 250, 0.12); border-color: rgba(96, 165, 250, 0.3); }
-        .ai-msg.ai   { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); }
-        .ai-msg {
-            border-radius: 0.6rem; border: 1px solid; padding: 0.75rem 1rem;
-            margin-bottom: 0.5rem; white-space: pre-wrap;
-        }
-        .skeleton { background: linear-gradient(90deg, rgba(255,255,255,0.05), rgba(255,255,255,0.12), rgba(255,255,255,0.05)); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
-        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    </style>
+    <title>Savings · Inverter Monitor</title>
+    {% include '_head.html' %}
 </head>
-<body class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">
+<body>
+    {% set active = 'savings' %}
+    {% include '_nav.html' %}
 
-    <nav class="bg-black/30 backdrop-blur-sm border-b border-white/10">
-        <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <div class="flex items-center gap-2 text-white font-semibold shrink-0">
-                <i class="fas fa-solar-panel text-yellow-300"></i>
-                <div class="leading-tight">
-                    <div>Inverter Monitor</div>
-                    <div class="text-[8px] font-mono font-normal text-white/25 tracking-wide">build {{ app_version }}</div>
-                </div>
-            </div>
-            <div class="flex items-center gap-1 overflow-x-auto max-w-full">
-                <a href="/" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Live</a>
-                <a href="/reports" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Reports</a>
-                <a href="/savings" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white">Savings</a>
-                <a href="/fesco-bill" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">FESCO Bill</a>
-                <form method="post" action="{{ url_for('auth.logout') }}" class="inline shrink-0">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white transition-colors" title="Sign out">
-                        <i class="fas fa-right-from-bracket"></i>
-                    </button>
-                </form>
-            </div>
-        </div>
-    </nav>
-
-    <div class="max-w-6xl mx-auto px-4 py-6">
-        <h1 class="text-3xl font-bold text-white mb-1 flex items-center gap-3">
-            <i class="fas fa-coins text-yellow-300"></i>
-            Cost Savings
-        </h1>
-        <p class="text-blue-200 mb-6">LESCO bill calculator, payback estimator, and AI insights for your solar system.</p>
-
-        <!-- Top KPI strip -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div class="stat-card">
-                <div class="label">Today's Savings</div>
-                <div class="big-number">Rs <span id="kpi-today">—</span></div>
-                <div class="text-white/50 text-xs mt-1"><span id="kpi-today-kwh">—</span> kWh grid avoided @ <span id="kpi-today-rate">—</span> /kWh</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">This Cycle</div>
-                <div class="big-number">Rs <span id="kpi-month">—</span></div>
-                <div class="text-white/50 text-xs mt-1">vs grid-only bill</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Lifetime Savings</div>
-                <div class="big-number">Rs <span id="kpi-lifetime">—</span></div>
-                <div class="text-white/50 text-xs mt-1"><span id="kpi-lifetime-days">—</span> days · <span id="kpi-lifetime-kwh">—</span> kWh</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Payback</div>
-                <div class="big-number"><span id="kpi-payback">—</span></div>
-                <div class="text-white/50 text-xs mt-1" id="kpi-payback-detail">—</div>
+    <main class="shell">
+        <div class="page-head">
+            <div>
+                <div class="eyebrow">Money</div>
+                <h1 class="page-title">Cost savings</h1>
+                <p class="page-sub">What the solar system saves against a grid-only bill, the payback estimate, and the tariff the numbers are built on.</p>
             </div>
         </div>
 
-        <!-- Slab projection alert -->
-        <div id="cliff-alert" class="hidden mb-6 stat-card border-amber-500/40">
-            <div class="flex items-start gap-3">
-                <i class="fas fa-triangle-exclamation text-amber-300 text-xl mt-1"></i>
-                <div class="flex-1">
-                    <div class="text-amber-200 font-semibold">Slab cliff approaching</div>
-                    <div class="text-white/80 text-sm mt-1" id="cliff-text"></div>
-                </div>
+        <!-- KPIs -->
+        <section class="savings-hero" aria-label="Headline savings">
+            <div class="kpi big" data-tone="solar">
+                <div class="kpi-l">Today</div>
+                <div class="kpi-v">Rs <span id="kpi-today">—</span></div>
+                <div class="kpi-s"><span id="kpi-today-kwh">—</span> kWh grid avoided at Rs <span id="kpi-today-rate">—</span>/kWh</div>
+            </div>
+            <div class="kpi big" data-tone="grid">
+                <div class="kpi-l">This billing cycle</div>
+                <div class="kpi-v">Rs <span id="kpi-month">—</span></div>
+                <div class="kpi-s">against a grid-only bill</div>
+            </div>
+            <div class="kpi big" data-tone="ok">
+                <div class="kpi-l">Lifetime</div>
+                <div class="kpi-v">Rs <span id="kpi-lifetime">—</span></div>
+                <div class="kpi-s"><span id="kpi-lifetime-days">—</span> days · <span id="kpi-lifetime-kwh">—</span> kWh solar</div>
+            </div>
+            <div class="kpi big" data-tone="load">
+                <div class="kpi-l">Payback</div>
+                <div class="kpi-v"><span id="kpi-payback">—</span></div>
+                <div class="kpi-s" id="kpi-payback-detail">—</div>
+            </div>
+        </section>
+
+        <div id="cliff-alert" class="banner banner-warn hidden" style="margin-top:18px">
+            <i class="fas fa-triangle-exclamation"></i>
+            <div>
+                <div class="banner-title">Slab cliff approaching</div>
+                <div class="banner-sub" id="cliff-text"></div>
             </div>
         </div>
 
-        <!-- Two-column layout: month detail + projection -->
-        <div class="grid md:grid-cols-2 gap-6 mb-6">
-            <div class="stat-card">
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-white font-semibold">This billing cycle</h3>
-                    <span class="pill info" id="month-label">—</span>
+        <!-- Cycle detail + projection -->
+        <section class="grid-2" style="margin-top:18px">
+            <div class="card">
+                <div class="card-h">
+                    <h2 class="card-title"><i class="fas fa-file-invoice"></i>This billing cycle</h2>
+                    <div class="card-actions"><span class="pill info" id="month-label">—</span></div>
                 </div>
-                <div class="row"><span class="k">Solar produced</span><span class="v"><span id="m-solar">—</span> kWh</span></div>
-                <div class="row"><span class="k">Grid imported</span><span class="v"><span id="m-grid">—</span> kWh</span></div>
-                <div class="row"><span class="k">Total load</span><span class="v"><span id="m-load">—</span> kWh</span></div>
-                <div class="row"><span class="k">Bill without solar</span><span class="v">Rs <span id="m-bill-without">—</span></span></div>
-                <div class="row"><span class="k">Bill with solar</span><span class="v">Rs <span id="m-bill-with">—</span></span></div>
-                <div class="row text-emerald-300"><span class="k">Saved this cycle</span><span class="v">Rs <span id="m-saved">—</span></span></div>
-
-                <details class="mt-3">
-                    <summary class="text-white/70 text-sm flex items-center gap-2">
-                        <span class="chev"><i class="fas fa-chevron-right text-xs"></i></span>
-                        Full bill breakdown (with solar)
-                    </summary>
-                    <div class="mt-3 text-xs" id="bill-breakdown"></div>
+                <div class="rows-leader">
+                    <div class="row"><span class="k">Solar produced</span><span class="v"><span id="m-solar">—</span> kWh</span></div>
+                    <div class="row"><span class="k">Grid imported</span><span class="v"><span id="m-grid">—</span> kWh</span></div>
+                    <div class="row"><span class="k">Total load</span><span class="v"><span id="m-load">—</span> kWh</span></div>
+                    <div class="row"><span class="k">Bill without solar</span><span class="v">Rs <span id="m-bill-without">—</span></span></div>
+                    <div class="row"><span class="k">Bill with solar</span><span class="v">Rs <span id="m-bill-with">—</span></span></div>
+                    <div class="row total accent"><span class="k">Saved this cycle</span><span class="v">Rs <span id="m-saved">—</span></span></div>
+                </div>
+                <details style="margin-top:14px">
+                    <summary><span class="chev"><i class="fas fa-chevron-right"></i></span>Full bill breakdown (with solar)</summary>
+                    <div class="rows-leader" style="margin-top:10px; font-size:13px" id="bill-breakdown"></div>
                 </details>
             </div>
 
-            <div class="stat-card">
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-white font-semibold">Cycle-end projection</h3>
-                    <span class="pill" id="proj-pill">—</span>
+            <div class="card">
+                <div class="card-h">
+                    <h2 class="card-title"><i class="fas fa-arrow-trend-up"></i>Cycle-end projection</h2>
+                    <div class="card-actions"><span class="pill" id="proj-pill">—</span></div>
                 </div>
-                <div class="row"><span class="k">Days elapsed / remaining</span><span class="v"><span id="p-elapsed">—</span> / <span id="p-remaining">—</span></span></div>
-                <div class="row"><span class="k">Grid kWh so far</span><span class="v"><span id="p-grid-now">—</span></span></div>
-                <div class="row"><span class="k">Daily avg grid usage</span><span class="v"><span id="p-daily-rate">—</span> kWh/day</span></div>
-                <div class="row"><span class="k">Projected cycle-end grid kWh</span><span class="v"><span id="p-grid-end">—</span></span></div>
-                <div class="row"><span class="k">Projected bill</span><span class="v">Rs <span id="p-bill">—</span></span></div>
-                <div class="row"><span class="k">Current slab</span><span class="v" id="p-current-slab">—</span></div>
-                <div class="row"><span class="k">Projected slab</span><span class="v" id="p-projected-slab">—</span></div>
-            </div>
-        </div>
-
-        <!-- Payback + Install cost -->
-        <div class="stat-card mb-6">
-            <h3 class="text-white font-semibold mb-3 flex items-center gap-2"><i class="fas fa-calculator text-emerald-300"></i> Payback estimator</h3>
-            <div class="grid md:grid-cols-3 gap-4 items-end">
-                <div>
-                    <label class="label block mb-1">Total install cost (PKR)</label>
-                    <input type="number" id="install-cost" min="0" step="1000" placeholder="e.g. 600000">
-                </div>
-                <div>
-                    <label class="label block mb-1">System start date</label>
-                    <input type="date" id="system-start-date">
-                </div>
-                <div>
-                    <button id="save-payback" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium w-full">
-                        <i class="fas fa-save mr-1"></i> Save & recalc
-                    </button>
+                <div class="rows-leader">
+                    <div class="row"><span class="k">Days elapsed / remaining</span><span class="v"><span id="p-elapsed">—</span> / <span id="p-remaining">—</span></span></div>
+                    <div class="row"><span class="k">Grid kWh so far</span><span class="v" id="p-grid-now">—</span></div>
+                    <div class="row"><span class="k">Daily average grid use</span><span class="v"><span id="p-daily-rate">—</span> kWh/day</span></div>
+                    <div class="row"><span class="k">Projected cycle-end grid kWh</span><span class="v" id="p-grid-end">—</span></div>
+                    <div class="row"><span class="k">Projected bill</span><span class="v">Rs <span id="p-bill">—</span></span></div>
+                    <div class="row"><span class="k">Current slab</span><span class="v" id="p-current-slab">—</span></div>
+                    <div class="row"><span class="k">Projected slab</span><span class="v" id="p-projected-slab">—</span></div>
                 </div>
             </div>
-            <div class="mt-4 text-sm text-white/80" id="payback-result">—</div>
-        </div>
+        </section>
 
-        <!-- AI Q&A -->
-        <div class="stat-card mb-6">
-            <h3 class="text-white font-semibold mb-3 flex items-center gap-2">
-                <i class="fas fa-wand-magic-sparkles text-purple-300"></i>
-                Ask the AI
-                <span class="pill" id="ai-status-pill">checking…</span>
-            </h3>
-            <p class="text-white/60 text-xs mb-3" id="ai-help">
-                Ask anything about your solar system, savings, or LESCO billing — answered using your live data.
-            </p>
-            <div id="ai-thread" class="mb-3"></div>
-            <div class="flex gap-2">
-                <input type="text" id="ai-question" placeholder="e.g. Should I run the AC at 3pm or wait?" class="flex-1">
-                <button id="ai-ask" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium">
-                    <i class="fas fa-paper-plane mr-1"></i> Ask
-                </button>
-            </div>
-            <div class="text-white/40 text-[11px] mt-2" id="ai-meta"></div>
-        </div>
-
-        <!-- Tariff config editor -->
-        <div class="stat-card mb-6">
-            <h3 class="text-white font-semibold mb-3 flex items-center gap-2"><i class="fas fa-sliders text-blue-300"></i> Tariff configuration</h3>
-            <p class="text-white/60 text-xs mb-3">All values come from your latest LESCO bill. Edit, save, and savings recalculate using the new rates.</p>
-
-            <div class="grid md:grid-cols-3 gap-3 mb-4">
-                <div>
-                    <label class="label block mb-1">Consumer type</label>
-                    <select id="cfg-consumer-type">
-                        <option value="unprotected">Unprotected</option>
-                        <option value="protected">Protected</option>
-                    </select>
+        <!-- Payback -->
+        <section class="card" style="margin-top:18px">
+            <div class="card-h"><h2 class="card-title"><i class="fas fa-calculator"></i>Payback estimator</h2></div>
+            <div class="form-grid" style="align-items:end">
+                <div class="field">
+                    <label for="install-cost">Total install cost (PKR)</label>
+                    <input class="input" type="number" id="install-cost" min="0" step="1000" placeholder="e.g. 600000">
                 </div>
-                <div>
-                    <label class="label block mb-1">Sanctioned load (kW)</label>
-                    <input type="number" id="cfg-sanctioned-load" step="0.1" min="0">
+                <div class="field">
+                    <label for="system-start-date">System start date</label>
+                    <input class="input" type="date" id="system-start-date">
                 </div>
-                <div>
-                    <label class="label block mb-1">Fixed charge (PKR/kW)</label>
-                    <input type="number" id="cfg-fix-kw" step="1" min="0">
-                </div>
-                <div>
-                    <label class="label block mb-1">Fixed charge applies above (units)</label>
-                    <input type="number" id="cfg-fix-min" step="1" min="-1" title="-1 = every bill">
-                </div>
-                <div>
-                    <label class="label block mb-1">FPA (PKR/unit, monthly)</label>
-                    <input type="number" id="cfg-fpa" step="0.01">
-                </div>
-                <div>
-                    <label class="label block mb-1">Quarterly Adjustment (PKR/unit)</label>
-                    <input type="number" id="cfg-qta" step="0.01">
-                </div>
-                <div>
-                    <label class="label block mb-1">FC Surcharge (PKR/unit)</label>
-                    <input type="number" id="cfg-fc" step="0.01">
-                </div>
-                <div>
-                    <label class="label block mb-1">NJ Surcharge (PKR/unit)</label>
-                    <input type="number" id="cfg-nj" step="0.01">
-                </div>
-                <div>
-                    <label class="label block mb-1">GST (%)</label>
-                    <input type="number" id="cfg-gst" step="0.1">
-                </div>
-                <div>
-                    <label class="label block mb-1">Electricity Duty (%)</label>
-                    <input type="number" id="cfg-ed" step="0.01">
-                </div>
-                <div>
-                    <label class="label block mb-1">Extra Tax (%)</label>
-                    <input type="number" id="cfg-extra-tax" step="0.01">
-                </div>
-                <div>
-                    <label class="label block mb-1">TV fee (PKR)</label>
-                    <input type="number" id="cfg-tv" step="1">
-                </div>
-                <div>
-                    <label class="label block mb-1">Min bill &lt; 5kW (PKR)</label>
-                    <input type="number" id="cfg-min-below5" step="1">
-                </div>
-                <div>
-                    <label class="label block mb-1">Min bill ≥ 5kW (PKR)</label>
-                    <input type="number" id="cfg-min-5plus" step="1">
+                <div class="field">
+                    <label>&nbsp;</label>
+                    <button type="button" id="save-payback" class="btn btn-primary"><i class="fas fa-save"></i> Save &amp; recalculate</button>
                 </div>
             </div>
+            <p class="note" style="margin:14px 0 0" id="payback-result">—</p>
+        </section>
 
-            <details>
-                <summary class="text-white/80 text-sm flex items-center gap-2 mb-2">
-                    <span class="chev"><i class="fas fa-chevron-right text-xs"></i></span>
-                    Edit slab rates
-                </summary>
-                <div class="grid md:grid-cols-2 gap-4 mt-3">
+        <!-- AI -->
+        <section class="card" style="margin-top:18px">
+            <div class="card-h">
+                <h2 class="card-title"><i class="fas fa-wand-magic-sparkles"></i>Ask the assistant</h2>
+                <div class="card-actions"><span class="pill" id="ai-status-pill">checking…</span></div>
+            </div>
+            <p class="card-sub" id="ai-help">Ask anything about the solar system, savings or the bill. Answers use your live data.</p>
+            <div id="ai-thread"></div>
+            <div class="toolbar" style="margin-top:10px">
+                <input type="text" id="ai-question" class="input" style="flex:1 1 260px" placeholder="e.g. Should I run the AC at 3 pm or wait?">
+                <button type="button" id="ai-ask" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Ask</button>
+            </div>
+            <div class="muted mono" style="font-size:11px; margin-top:8px" id="ai-meta"></div>
+        </section>
+
+        <!-- Tariff configuration -->
+        <section class="card" style="margin-top:18px">
+            <div class="card-h"><h2 class="card-title"><i class="fas fa-sliders"></i>Tariff configuration</h2></div>
+            <p class="card-sub">Values from your latest bill. Save, and every savings figure recalculates with the new rates.</p>
+
+            <div class="form-grid">
+                <div class="field"><label for="cfg-consumer-type">Consumer type</label>
+                    <select id="cfg-consumer-type" class="input"><option value="unprotected">Unprotected</option><option value="protected">Protected</option></select></div>
+                <div class="field"><label for="cfg-sanctioned-load">Sanctioned load (kW)</label><input class="input" type="number" id="cfg-sanctioned-load" step="0.1" min="0"></div>
+                <div class="field"><label for="cfg-fix-kw">Fixed charge (PKR/kW)</label><input class="input" type="number" id="cfg-fix-kw" step="1" min="0"></div>
+                <div class="field"><label for="cfg-fix-min">Fixed charge applies above (units)</label><input class="input" type="number" id="cfg-fix-min" step="1" min="-1" title="-1 = every bill"></div>
+                <div class="field"><label for="cfg-fpa">FPA (PKR/unit, monthly)</label><input class="input" type="number" id="cfg-fpa" step="0.01"></div>
+                <div class="field"><label for="cfg-qta">Quarterly adjustment (PKR/unit)</label><input class="input" type="number" id="cfg-qta" step="0.01"></div>
+                <div class="field"><label for="cfg-fc">FC surcharge (PKR/unit)</label><input class="input" type="number" id="cfg-fc" step="0.01"></div>
+                <div class="field"><label for="cfg-nj">NJ surcharge (PKR/unit)</label><input class="input" type="number" id="cfg-nj" step="0.01"></div>
+                <div class="field"><label for="cfg-gst">GST (%)</label><input class="input" type="number" id="cfg-gst" step="0.1"></div>
+                <div class="field"><label for="cfg-ed">Electricity duty (%)</label><input class="input" type="number" id="cfg-ed" step="0.01"></div>
+                <div class="field"><label for="cfg-extra-tax">Extra tax (%)</label><input class="input" type="number" id="cfg-extra-tax" step="0.01"></div>
+                <div class="field"><label for="cfg-tv">TV fee (PKR)</label><input class="input" type="number" id="cfg-tv" step="1"></div>
+                <div class="field"><label for="cfg-min-below5">Min bill &lt; 5 kW (PKR)</label><input class="input" type="number" id="cfg-min-below5" step="1"></div>
+                <div class="field"><label for="cfg-min-5plus">Min bill ≥ 5 kW (PKR)</label><input class="input" type="number" id="cfg-min-5plus" step="1"></div>
+            </div>
+
+            <details style="margin-top:16px">
+                <summary><span class="chev"><i class="fas fa-chevron-right"></i></span>Edit slab rates</summary>
+                <div class="grid-2" style="margin-top:12px">
                     <div>
-                        <div class="label mb-2">Protected slabs (telescopic)</div>
+                        <div class="label" style="margin-bottom:8px">Protected slabs (telescopic)</div>
                         <div id="protected-slabs"></div>
                     </div>
                     <div>
-                        <div class="label mb-2">Unprotected slabs (flat / single-block)</div>
+                        <div class="label" style="margin-bottom:8px">Unprotected slabs (flat / single block)</div>
                         <div id="unprotected-slabs"></div>
                     </div>
                 </div>
             </details>
 
-            <div class="flex flex-wrap items-center gap-2 mt-4">
-                <button id="save-config" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium">
-                    <i class="fas fa-save mr-1"></i> Save tariff config
-                </button>
-                <button id="reset-config" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white/80 font-medium">
-                    <i class="fas fa-arrow-rotate-left mr-1"></i> Reset to LESCO defaults
-                </button>
-                <span id="config-toast" class="ml-2 self-center text-sm"></span>
+            <div class="toolbar" style="margin-top:16px">
+                <button type="button" id="save-config" class="btn btn-primary"><i class="fas fa-save"></i> Save tariff</button>
+                <button type="button" id="reset-config" class="btn"><i class="fas fa-arrow-rotate-left"></i> Reset to defaults</button>
+                <span id="config-toast" class="toast-inline"></span>
             </div>
 
-            <details class="mt-4" id="tariff-check" open>
-                <summary class="text-white/80 text-sm flex items-center gap-2 mb-2">
-                    <span class="chev"><i class="fas fa-chevron-right text-xs"></i></span>
-                    Check this tariff against your real bills
-                    <span class="pill" id="tariff-check-pill">—</span>
-                </summary>
-                <p class="text-white/50 text-xs mb-2">
-                    Every closed cycle with a real bill amount (bootstrapped history or a recorded meter reading) is re-billed
-                    with the config above. Tune FPA, surcharges and fixed charges until the error is small — this is what
-                    every savings figure on this page is built on.
-                </p>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-xs">
-                        <thead>
-                            <tr class="text-white/60 border-b border-white/10">
-                                <th class="text-left py-1.5">Cycle</th>
-                                <th class="text-right py-1.5">Units</th>
-                                <th class="text-right py-1.5">Actual bill</th>
-                                <th class="text-right py-1.5">This config</th>
-                                <th class="text-right py-1.5">Error</th>
-                            </tr>
-                        </thead>
+            <details style="margin-top:18px" id="tariff-check" open>
+                <summary><span class="chev"><i class="fas fa-chevron-right"></i></span>Check this tariff against real bills <span class="pill" id="tariff-check-pill">—</span></summary>
+                <p class="note small" style="margin-top:8px">Every closed cycle with a real bill amount is re-billed with the configuration above. Tune FPA, surcharges and fixed charges until the error is small. Every savings figure on this page rests on it.</p>
+                <div class="table-wrap">
+                    <table class="table compact">
+                        <thead><tr><th>Cycle</th><th class="num">Units</th><th class="num">Actual bill</th><th class="num">This tariff</th><th class="num">Error</th></tr></thead>
                         <tbody id="tariff-check-body"></tbody>
                     </table>
                 </div>
             </details>
-        </div>
+        </section>
 
-        <!-- What-if calculator -->
-        <div class="stat-card mb-6">
-            <h3 class="text-white font-semibold mb-3 flex items-center gap-2"><i class="fas fa-magnifying-glass-chart text-blue-300"></i> What-if bill calculator</h3>
-            <p class="text-white/60 text-xs mb-3">Plug in any kWh number to see the full LESCO bill breakdown using your saved tariff config.</p>
-            <div class="flex gap-2 items-end mb-3">
-                <div class="flex-1 max-w-xs">
-                    <label class="label block mb-1">Units (kWh)</label>
-                    <input type="number" id="whatif-units" min="0" step="1" value="250">
+        <!-- What-if -->
+        <section class="card" style="margin-top:18px">
+            <div class="card-h"><h2 class="card-title"><i class="fas fa-magnifying-glass-chart"></i>What-if bill</h2></div>
+            <p class="card-sub">Any number of units, billed with the saved tariff.</p>
+            <div class="toolbar">
+                <div class="field" style="width:180px">
+                    <label for="whatif-units">Units (kWh)</label>
+                    <input class="input" type="number" id="whatif-units" min="0" step="1" value="250">
                 </div>
-                <button id="whatif-calc" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium">
-                    Calculate
-                </button>
+                <div class="field"><label>&nbsp;</label><button type="button" id="whatif-calc" class="btn btn-primary">Calculate</button></div>
             </div>
-            <div id="whatif-result" class="text-sm"></div>
-        </div>
+            <div id="whatif-result" class="rows-leader" style="margin-top:12px; font-size:13px"></div>
+        </section>
 
-        <!-- Recent monthly history -->
-        <div class="stat-card mb-12">
-            <h3 class="text-white font-semibold mb-3 flex items-center gap-2"><i class="fas fa-clock-rotate-left text-white/60"></i> Billing-cycle savings history</h3>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="text-white/60 border-b border-white/10">
-                            <th class="text-left py-2">Cycle</th>
-                            <th class="text-right py-2">Solar (kWh)</th>
-                            <th class="text-right py-2">Grid (kWh)</th>
-                            <th class="text-right py-2">Load (kWh)</th>
-                            <th class="text-right py-2">Saved (PKR)</th>
-                        </tr>
-                    </thead>
+        <!-- History -->
+        <section class="card" style="margin-top:18px">
+            <div class="card-h"><h2 class="card-title"><i class="fas fa-clock-rotate-left"></i>Savings by billing cycle</h2></div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>Cycle</th><th class="num">Solar (kWh)</th><th class="num">Grid (kWh)</th><th class="num">Load (kWh)</th><th class="num">Saved (PKR)</th></tr></thead>
                     <tbody id="month-history"></tbody>
                 </table>
             </div>
-        </div>
-    </div>
+        </section>
 
-    <script src="{{ url_for('static', filename='js/savings.js') }}"></script>
+        <footer class="foot">
+            <span>Inverter Monitor</span>
+            <span class="mono">build {{ app_version }}</span>
+        </footer>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/ui.js') }}?v={{ app_version }}"></script>
+    <script src="{{ url_for('static', filename='js/savings.js') }}?v={{ app_version }}"></script>
 </body>
 </html>

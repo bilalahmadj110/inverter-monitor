@@ -55,6 +55,7 @@ ALLOWED_PREFIXES = (
     "/inverter", "/set-output-priority", "/set-charger-priority",
 )
 BLOCKED_PATHS = ("/login", "/logout")
+CSRF_REFRESH_S = 1800         # Flask-WTF tokens last 3600 s; renew well inside that
 CHUNK_CHARS_B64 = 90_000      # base64 text; well under the 128 KB frame after the JSON envelope
 CHUNK_CHARS_TEXT = 60_000     # identity text may contain multi-byte characters
 RPC_TIMEOUT_S = 170
@@ -98,6 +99,7 @@ class LocalApp:
         self._opener = urllib.request.build_opener(_NoRedirect())
         self._cookie: str | None = None
         self._csrf: str | None = None
+        self._csrf_at = 0.0          # monotonic time the CSRF token was fetched
         self._last_login_attempt = 0.0
 
     @staticmethod
@@ -141,7 +143,23 @@ class LocalApp:
         self._adopt_cookie(headers)
         m = re.search(rb'name="csrf-token" content="([^"]+)"', body)
         self._csrf = m.group(1).decode() if m else None
+        self._csrf_at = time.monotonic()
         log.info("logged in to local app")
+        return True
+
+    def refresh_csrf(self) -> bool:
+        """Flask-WTF tokens expire after an hour; read a fresh one from the dashboard page."""
+        if not self._cookie:
+            return False
+        status, headers, body = self._open(urllib.request.Request(f"{LOCAL_APP_URL}/", headers={"Cookie": self._cookie}))
+        if status != 200:
+            return False
+        self._adopt_cookie(headers)
+        m = re.search(rb'name="csrf-token" content="([^"]+)"', body)
+        if not m:
+            return False
+        self._csrf = m.group(1).decode()
+        self._csrf_at = time.monotonic()
         return True
 
     def _adopt_cookie(self, headers) -> None:
@@ -158,6 +176,8 @@ class LocalApp:
         headers = {"Cookie": self._cookie or "", "Accept": "application/json, text/csv;q=0.9, */*;q=0.5"}
         data = None
         if method not in ("GET", "HEAD"):
+            if not self._csrf or time.monotonic() - self._csrf_at > CSRF_REFRESH_S:
+                self.refresh_csrf()
             headers["X-CSRFToken"] = self._csrf or ""
             if body is not None:
                 data = body.encode() if isinstance(body, str) else body
@@ -168,6 +188,10 @@ class LocalApp:
         if status in (401, 302) and _retry:
             self._cookie = None
             if self.login():
+                return self.request(method, path, query, body, ctype, timeout, _retry=False)
+        if status == 400 and _retry and method not in ("GET", "HEAD") and b"CSRF" in payload:
+            # Token expired between refreshes: fetch a new one and retry once.
+            if self.refresh_csrf():
                 return self.request(method, path, query, body, ctype, timeout, _retry=False)
         out_headers = {}
         cd = resp_headers.get("Content-Disposition")

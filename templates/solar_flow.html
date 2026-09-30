@@ -4,732 +4,353 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Solar Energy System Monitor</title>
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/solar-panel.svg') }}">
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <style>
-        :root { color-scheme: dark; }
-        html, body { color-scheme: dark; }
-        input, select, textarea, button { color-scheme: dark; }
-        ::placeholder { color: rgba(255, 255, 255, 0.55); opacity: 1; }
-        select option { background-color: #0f172a; color: #fff; }
-
-        .dim-component {
-            opacity: 0.3;
-            filter: grayscale(70%);
-        }
-        
-        .active-flow {
-            animation: flowPulse 2s ease-in-out infinite;
-        }
-        
-        @keyframes flowPulse {
-            0%, 100% { opacity: 0.6; }
-            50% { opacity: 1; }
-        }
-        
-        .energy-particle {
-            filter: drop-shadow(0 0 4px currentColor);
-        }
-        
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-left: 8px;
-        }
-        
-        .status-active {
-            background: #10b981;
-            box-shadow: 0 0 10px #10b981;
-            animation: pulse 2s infinite;
-        }
-        
-        .status-inactive {
-            background: #6b7280;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        .connection-line {
-            stroke-width: 4;
-            stroke-linecap: round;
-            stroke-dasharray: 10, 5;
-        }
-        
-        .animate-dash {
-            animation: dash 3s linear infinite;
-        }
-        
-        @keyframes dash {
-            0% { stroke-dashoffset: 0; }
-            100% { stroke-dashoffset: -30; }
-        }
-
-        /* Flow diagram layout - X / cross pattern */
-        .flow-container {
-            position: relative;
-            width: 100%;
-            max-width: 800px;
-            height: 420px;
-            margin: 0 auto;
-        }
-        .flow-node {
-            position: absolute;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            z-index: 20;
-        }
-        .flow-node .info {
-            display: flex;
-            flex-direction: column;
-            line-height: 1.1;
-        }
-        .flow-node .info .v { color: #E5E7EB; font-size: 0.95rem; font-weight: 600; }
-        .flow-node .info .m { color: rgba(255,255,255,0.65); font-size: 0.78rem; }
-        .flow-node.grid    { top: 8%;  left: 2%; }
-        .flow-node.load    { top: 8%;  right: 2%; flex-direction: row-reverse; }
-        .flow-node.solar   { bottom: 8%; left: 2%; }
-        .flow-node.battery { bottom: 8%; right: 2%; flex-direction: row-reverse; }
-        .flow-node.grid .info,
-        .flow-node.solar .info { align-items: flex-end; text-align: right; }
-        .flow-node.load .info,
-        .flow-node.battery .info { align-items: flex-start; text-align: left; }
-        .flow-node.inverter {
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            flex-direction: column;
-            gap: 4px;
-        }
-        .flow-icon {
-            width: 72px;
-            height: 72px;
-            filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4));
-        }
-        .flow-icon.inverter-icon { width: 110px; height: 110px; }
-        .flow-icon.solar-tilt { transform: rotate(-15deg); }
-        .flow-svg {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 10;
-        }
-        .flow-label {
-            position: absolute;
-            z-index: 15;
-            pointer-events: none;
-        }
-        .battery-svg-wrapper { display: flex; align-items: center; justify-content: center; }
-        .battery-svg { width: 54px; height: 78px; }
-        .battery-fill { transition: height 0.6s ease, y 0.6s ease, fill 0.6s ease; }
-
-        /* Scale the corner flow diagram down on phones so nodes don't crowd the centre inverter. */
-        @media (max-width: 600px) {
-            .flow-container { height: 360px; }
-            .flow-icon { width: 54px; height: 54px; }
-            .flow-icon.inverter-icon { width: 84px; height: 84px; }
-            .flow-node { gap: 6px; }
-            .flow-node .info .v { font-size: 0.82rem; }
-            .flow-node .info .m { font-size: 0.66rem; }
-            .battery-svg { width: 42px; height: 62px; }
-            .flow-node.grid, .flow-node.solar { left: 0; }
-            .flow-node.load, .flow-node.battery { right: 0; }
-            .flow-label { display: none; }
-        }
-        @media (max-width: 380px) {
-            .flow-container { height: 320px; }
-            .flow-icon { width: 44px; height: 44px; }
-            .flow-icon.inverter-icon { width: 68px; height: 68px; }
-            .flow-node .info .v { font-size: 0.74rem; }
-            .flow-node .info .m { font-size: 0.6rem; }
-        }
-
-        /* Component click affordance */
-        .flow-node { cursor: pointer; transition: transform 0.15s ease; }
-        .flow-node:hover { transform: translate(-0%, -0%) scale(1.04); }
-        .flow-node.inverter:hover { transform: translate(-50%, -50%) scale(1.04); }
-        .flow-node.grid:hover,
-        .flow-node.solar:hover { transform: scale(1.04); }
-        .flow-node.load:hover,
-        .flow-node.battery:hover { transform: scale(1.04); }
-
-        /* Side drawer */
-        .modal-backdrop {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-            z-index: 100;
-            opacity: 1;
-            transition: opacity 0.3s ease;
-            display: block !important;   /* override Tailwind .hidden so transition can run */
-        }
-        .modal-backdrop.hidden {
-            opacity: 0;
-            pointer-events: none;
-        }
-        .modal-backdrop.hidden .modal-card { transform: translateX(100%); }
-        .modal-card {
-            position: fixed;
-            top: 0; right: 0; bottom: 0;
-            width: 100%;
-            max-width: 440px;
-            overflow-y: auto;
-            background: linear-gradient(to bottom, #111827, #0f172a);
-            border-left: 1px solid rgba(255,255,255,0.1);
-            box-shadow: -25px 0 50px -12px rgba(0,0,0,0.6);
-            transform: translateX(0);
-            transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
-            display: flex;
-            flex-direction: column;
-        }
-        @media (min-width: 640px) {
-            .modal-card { border-top-left-radius: 1rem; border-bottom-left-radius: 1rem; }
-        }
-        .modal-head { position: sticky; top: 0; background: rgba(17, 24, 39, 0.95); backdrop-filter: blur(8px); z-index: 1; }
-        .modal-head { display: flex; align-items: center; gap: 0.75rem; padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.08); }
-        .modal-head .icon-ring { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-        .modal-body { padding: 1.25rem 1.5rem 1.5rem; }
-        .modal-body section { margin-bottom: 1.5rem; }
-        .modal-body section:last-child { margin-bottom: 0; }
-        .modal-body h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.55); font-weight: 600; margin-bottom: 0.5rem; }
-        .stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
-        .stat-tile { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 0.5rem; padding: 0.625rem 0.75rem; }
-        .stat-tile .k { font-size: 0.7rem; color: rgba(255,255,255,0.5); }
-        .stat-tile .v { font-size: 1.05rem; font-weight: 600; color: #fff; }
-        .choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
-        .choice-btn {
-            text-align: left; padding: 0.75rem; border-radius: 0.5rem;
-            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;
-            cursor: pointer; transition: background 0.15s ease, border 0.15s ease;
-        }
-        .choice-btn:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.2); }
-        .choice-btn.current { border-color: #34d399; background: rgba(52, 211, 153, 0.1); }
-        .choice-btn .name { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem; }
-        .choice-btn .desc { font-size: 0.72rem; color: rgba(255,255,255,0.55); margin-top: 0.15rem; }
-        .toast { margin-top: 0.75rem; padding: 0.625rem 0.75rem; border-radius: 0.5rem; font-size: 0.82rem; }
-        .toast.ok  { background: rgba(52, 211, 153, 0.12); color: #a7f3d0; border: 1px solid rgba(52, 211, 153, 0.3); }
-        .toast.err { background: rgba(239, 68, 68, 0.12); color: #fecaca; border: 1px solid rgba(239, 68, 68, 0.3); }
-        .toast.info { background: rgba(96, 165, 250, 0.12); color: #bfdbfe; border: 1px solid rgba(96, 165, 250, 0.3); }
-        .info-row { display: flex; justify-content: space-between; padding: 0.35rem 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.85rem; }
-        .info-row:last-child { border-bottom: none; }
-        .info-row .k { color: rgba(255,255,255,0.6); }
-        .info-row .v { color: #fff; font-weight: 500; }
-
-        /* Editable parameter rows (battery / inverter settings) */
-        .param-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
-        .param-row:last-child { border-bottom: none; }
-        .param-row .k { color: rgba(255,255,255,0.72); font-size: 0.84rem; flex: 1 1 auto; min-width: 0; }
-        .param-row .k .cur { display: block; color: rgba(255,255,255,0.4); font-size: 0.68rem; }
-        .param-row input, .param-row select { width: 6.2rem; flex: 0 0 auto; font-size: 0.85rem; padding: 0.35rem 0.5rem; }
-        .param-row .apply {
-            flex: 0 0 auto; padding: 0.35rem 0.7rem; border-radius: 0.45rem;
-            background: #2563eb; color: #fff; font-size: 0.78rem; font-weight: 600; cursor: pointer;
-            border: 1px solid rgba(255,255,255,0.12);
-        }
-        .param-row .apply:hover { background: #1d4ed8; }
-        .param-row .apply:disabled { opacity: 0.5; cursor: wait; }
-        .seg { display: inline-flex; border: 1px solid rgba(255,255,255,0.2); border-radius: 0.45rem; overflow: hidden; }
-        .seg button { padding: 0.35rem 0.75rem; font-size: 0.82rem; color: #fff; background: transparent; cursor: pointer; }
-        .seg button + button { border-left: 1px solid rgba(255,255,255,0.2); }
-        .seg button.current { background: #2563eb; }
-    </style>
+    <title>Live · Inverter Monitor</title>
+    {% include '_head.html' %}
 </head>
-<body class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">
+<body>
+    {% set active = 'live' %}
+    {% include '_nav.html' %}
 
-    <!-- Component Settings Modal (content injected by JS) -->
+    <!-- Component sheet (content injected by solar_flow.js) -->
     <div id="component-modal" class="modal-backdrop hidden">
         <div class="modal-card" id="component-modal-card" role="dialog" aria-modal="true"></div>
     </div>
 
-    <!-- Top Navigation -->
-    <nav class="bg-black/30 backdrop-blur-sm border-b border-white/10">
-        <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <div class="flex items-center gap-2 text-white font-semibold shrink-0">
-                <i class="fas fa-solar-panel text-yellow-300"></i>
-                <div class="leading-tight">
-                    <div>Inverter Monitor</div>
-                    <div class="text-[8px] font-mono font-normal text-white/25 tracking-wide">build {{ app_version }}</div>
+    <main class="shell">
+        <div class="page-head">
+            <div>
+                <div class="eyebrow"><span class="live-dot" id="live-dot"></span> Live view</div>
+                <h1 class="page-title">Energy flow</h1>
+                <p class="page-sub">Solar, grid, battery and load right now. One reading every 0.6&nbsp;s.</p>
+            </div>
+            <div class="head-actions">
+                <span id="mode-pill" class="pill mode-pill" data-mode="S">
+                    <span class="dot" id="mode-pill-dot"></span>
+                    <span id="mode-pill-label">Connecting…</span>
+                </span>
+                <span id="charge-stage-pill" class="pill ok hidden">
+                    <i class="fas fa-bolt"></i>
+                    <span id="charge-stage-label">Idle</span>
+                </span>
+                <span id="grid-pill" class="pill info hidden">
+                    <i class="fas fa-plug"></i>
+                    <span id="grid-pill-label">Grid</span>
+                </span>
+                <button id="extras-refresh" type="button" class="pill pill-btn" title="Re-read mode, warnings and configuration from the inverter">
+                    <i class="fas fa-arrows-rotate" id="extras-refresh-icon"></i>
+                    <span id="extras-refresh-label">Refresh status</span>
+                </button>
+            </div>
+        </div>
+
+        <div id="warnings-banner" class="hidden" style="margin-bottom:18px">
+            <div class="banner banner-warn" id="warnings-banner-box">
+                <i class="fas fa-triangle-exclamation" id="warnings-banner-icon"></i>
+                <div>
+                    <div class="banner-title" id="warnings-banner-title">Active warnings</div>
+                    <div class="banner-sub" id="warnings-banner-list"></div>
                 </div>
-            </div>
-            <div class="flex items-center gap-1 overflow-x-auto max-w-full">
-                <a href="/" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white">Live</a>
-                <a href="/reports" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Reports</a>
-                <a href="/savings" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Savings</a>
-                <a href="/fesco-bill" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">FESCO Bill</a>
-                <form method="post" action="{{ url_for('auth.logout') }}" class="inline shrink-0">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white transition-colors" title="Sign out">
-                        <i class="fas fa-right-from-bracket"></i>
-                    </button>
-                </form>
+                <button type="button" id="warnings-banner-toggle" class="close">hide</button>
             </div>
         </div>
-    </nav>
 
-    <!-- Header -->
-    <div class="p-6 text-center">
-        <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 flex flex-wrap items-center justify-center gap-2">
-            <img src="{{ url_for('static', filename='icons/solar-panel.svg') }}" alt="Solar" class="w-8 h-8 sm:w-10 sm:h-10">
-            Solar Energy System Monitor
-        </h1>
-        <p class="text-blue-200">Real-time System Status</p>
-        <div class="mt-3 flex flex-wrap items-center justify-center gap-2">
-            <span id="mode-pill" class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-slate-500/30 text-slate-100 border border-white/10">
-                <span class="w-2 h-2 rounded-full bg-slate-300" id="mode-pill-dot"></span>
-                <span id="mode-pill-label">Connecting…</span>
-            </span>
-            <span id="charge-stage-pill" class="hidden inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-emerald-500/20 text-emerald-200 border border-white/10">
-                <i class="fas fa-bolt text-xs"></i>
-                <span id="charge-stage-label">Idle</span>
-            </span>
-            <span id="grid-pill" class="hidden inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium bg-blue-500/20 text-blue-200 border border-white/10">
-                <i class="fas fa-plug text-xs"></i>
-                <span id="grid-pill-label">Grid</span>
-            </span>
-            <button id="extras-refresh" title="Refresh mode / warnings / config from inverter"
-                    class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-white/5 text-white/70 hover:bg-white/15 hover:text-white border border-white/10 transition-colors">
-                <i class="fas fa-arrows-rotate" id="extras-refresh-icon"></i>
-                <span id="extras-refresh-label">Refresh status</span>
-            </button>
-        </div>
-    </div>
-
-    <!-- Warnings Banner -->
-    <div id="warnings-banner" class="hidden max-w-4xl mx-auto px-4 mb-4">
-        <div class="rounded-lg border p-3 flex items-start gap-3" id="warnings-banner-box">
-            <i class="fas fa-triangle-exclamation mt-1" id="warnings-banner-icon"></i>
-            <div class="flex-1">
-                <div class="font-semibold" id="warnings-banner-title">Active warnings</div>
-                <div class="text-sm opacity-90" id="warnings-banner-list"></div>
-            </div>
-            <button id="warnings-banner-toggle" class="text-sm opacity-75 hover:opacity-100">hide</button>
-        </div>
-    </div>
-
-    <!-- Main Flow Diagram -->
-    <div class="flex items-center justify-center px-4 pb-4">
-        <div class="w-full max-w-4xl">
-            <div class="flow-container">
-
-                <!-- Connection Lines with Animation (behind nodes) -->
-                <svg class="flow-svg" viewBox="0 0 800 420" preserveAspectRatio="xMidYMid meet">
+        <!-- Flow diagram: sources on the left, inverter in the middle, sinks on the right -->
+        <section class="card flow-card" aria-label="Energy flow diagram">
+            <div class="flow-stage">
+                <svg class="flow-svg" viewBox="0 0 800 420" preserveAspectRatio="none" aria-hidden="true">
                     <defs>
-                        <path id="grid-path"    d="M 180,95 L 330,185" />
-                        <path id="load-path"    d="M 470,185 L 620,95" />
-                        <path id="solar-path"   d="M 180,325 L 330,235" />
-                        <path id="battery-path" d="M 620,325 L 470,235" />
+                        <path id="solar-path"   d="M 180,110 C 290,110 285,210 358,210"/>
+                        <path id="grid-path"    d="M 180,310 C 290,310 285,210 358,210"/>
+                        <path id="load-path"    d="M 442,210 C 515,210 510,110 620,110"/>
+                        <path id="battery-path" d="M 620,310 C 510,310 515,210 442,210"/>
                     </defs>
+                    <path id="solar-line"   class="flow-line solar"   d="M 180,110 C 290,110 285,210 358,210" vector-effect="non-scaling-stroke"/>
+                    <path id="grid-line"    class="flow-line grid"    d="M 180,310 C 290,310 285,210 358,210" vector-effect="non-scaling-stroke"/>
+                    <path id="load-line"    class="flow-line load"    d="M 442,210 C 515,210 510,110 620,110" vector-effect="non-scaling-stroke"/>
+                    <path id="battery-line" class="flow-line battery" d="M 620,310 C 510,310 515,210 442,210" vector-effect="non-scaling-stroke"/>
 
-                    <line id="grid-line"    x1="180" y1="95"  x2="330" y2="185" class="connection-line" stroke="#60A5FA" stroke-opacity="0.4"/>
-                    <line id="load-line"    x1="470" y1="185" x2="620" y2="95"  class="connection-line" stroke="#A78BFA" stroke-opacity="0.4"/>
-                    <line id="solar-line"   x1="330" y1="235" x2="180" y2="325" class="connection-line" stroke="#FCD34D" stroke-opacity="0.4"/>
-                    <line id="battery-line" x1="620" y1="325" x2="470" y2="235" class="connection-line" stroke="#34D399" stroke-opacity="0.4"/>
-
-                    <circle id="grid-particle"    r="4" fill="#60A5FA" opacity="0" class="energy-particle">
-                        <animateMotion dur="2s" repeatCount="indefinite"><mpath href="#grid-path"/></animateMotion>
-                    </circle>
-                    <circle id="load-particle"    r="4" fill="#A78BFA" opacity="0" class="energy-particle">
-                        <animateMotion dur="2s" repeatCount="indefinite"><mpath href="#load-path"/></animateMotion>
-                    </circle>
-                    <circle id="solar-particle"   r="4" fill="#FCD34D" opacity="0" class="energy-particle">
+                    <circle id="solar-particle" r="5" opacity="0" class="energy-particle solar">
                         <animateMotion dur="2s" repeatCount="indefinite"><mpath href="#solar-path"/></animateMotion>
                     </circle>
-                    <circle id="battery-particle" r="4" fill="#34D399" opacity="0" class="energy-particle">
+                    <circle id="grid-particle" r="5" opacity="0" class="energy-particle grid">
+                        <animateMotion dur="2s" repeatCount="indefinite"><mpath href="#grid-path"/></animateMotion>
+                    </circle>
+                    <circle id="load-particle" r="5" opacity="0" class="energy-particle load">
+                        <animateMotion dur="2s" repeatCount="indefinite"><mpath href="#load-path"/></animateMotion>
+                    </circle>
+                    <circle id="battery-particle" r="5" opacity="0" class="energy-particle battery">
                         <animateMotion id="battery-motion" dur="2s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1" calcMode="linear"><mpath href="#battery-path"/></animateMotion>
                     </circle>
                 </svg>
 
-                <!-- Grid: top-left -->
-                <div id="grid-component" class="flow-node grid">
-                    <div class="info">
-                        <span class="v"><span id="grid-voltage">0</span> V</span>
-                        <span class="m"><span id="grid-frequency">0</span> Hz</span>
-                    </div>
-                    <img src="{{ url_for('static', filename='icons/grid.svg') }}" alt="Grid" class="flow-icon">
-                    <span class="status-indicator status-inactive" id="grid-status"></span>
-                </div>
-
-                <!-- Load: top-right -->
-                <div id="load-component" class="flow-node load">
-                    <div class="info">
-                        <span class="v"><span id="load-power">0</span> W</span>
-                        <span class="m"><span id="load-voltage">0</span> V · <span id="load-percentage">0</span>%</span>
-                    </div>
-                    <img src="{{ url_for('static', filename='icons/load.svg') }}" alt="Load" class="flow-icon">
-                    <span class="status-indicator status-inactive" id="load-status"></span>
-                </div>
-
-                <!-- Central Inverter -->
-                <div id="inverter-component" class="flow-node inverter">
-                    <img src="{{ url_for('static', filename='icons/inverter.svg') }}" alt="Inverter" class="flow-icon inverter-icon">
-                    <div class="text-white/80 text-xs"><span id="inverter-temp">--</span>°C</div>
-                    <span class="status-indicator status-active" id="inverter-status"></span>
-                </div>
-
-                <!-- Solar: bottom-left -->
-                <div id="solar-component" class="flow-node solar">
-                    <div class="info">
-                        <span class="v"><span id="solar-power">0</span> W</span>
-                        <span class="m"><span id="solar-voltage">0</span> V</span>
-                    </div>
-                    <img src="{{ url_for('static', filename='icons/solar-panel.svg') }}" alt="Solar" class="flow-icon solar-tilt">
+                <!-- Solar: left, top -->
+                <div id="solar-component" class="flow-node solar" style="left:15%; top:26.2%" role="button" tabindex="0" aria-label="Solar details">
                     <span class="status-indicator status-inactive" id="solar-status"></span>
+                    <img src="{{ url_for('static', filename='icons/solar-panel.svg') }}" alt="" class="flow-icon">
+                    <div class="flow-val"><span id="solar-power">0</span><small>W</small></div>
+                    <div class="flow-sub"><span id="solar-voltage">0</span> V</div>
+                    <div class="flow-name">Solar</div>
                 </div>
 
-                <!-- Battery: bottom-right -->
-                <div id="battery-component" class="flow-node battery">
-                    <div class="info">
-                        <span class="v"><span id="battery-percentage">0</span>%</span>
-                        <span class="m"><span id="battery-voltage">0</span> V</span>
-                    </div>
-                    <div class="battery-svg-wrapper">
-                        <svg class="battery-svg" viewBox="0 0 60 88" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="20" y="0" width="20" height="6" rx="2" fill="#34D399"/>
-                            <rect x="2"  y="8" width="56" height="78" rx="8" ry="8" fill="rgba(255,255,255,0.06)" stroke="#34D399" stroke-width="2.5"/>
-                            <rect id="battery-fill" class="battery-fill" x="6" y="84" width="48" height="0" rx="4" ry="4" fill="#34D399"/>
-                        </svg>
-                    </div>
+                <!-- Grid: left, bottom -->
+                <div id="grid-component" class="flow-node grid" style="left:15%; top:73.8%" role="button" tabindex="0" aria-label="Grid details">
+                    <span class="status-indicator status-inactive" id="grid-status"></span>
+                    <img src="{{ url_for('static', filename='icons/grid.svg') }}" alt="" class="flow-icon">
+                    <div class="flow-val"><span id="grid-voltage">0</span><small>V</small></div>
+                    <div class="flow-sub"><span id="grid-frequency">0</span> Hz</div>
+                    <div class="flow-name">Grid</div>
+                </div>
+
+                <!-- Inverter: centre -->
+                <div id="inverter-component" class="flow-node inverter" style="left:50%; top:50%" role="button" tabindex="0" aria-label="Inverter details">
+                    <span class="status-indicator status-active" id="inverter-status"></span>
+                    <img src="{{ url_for('static', filename='icons/inverter.svg') }}" alt="" class="flow-icon">
+                    <div class="flow-sub"><span id="inverter-temp">--</span>°C</div>
+                    <div class="flow-name">Inverter</div>
+                </div>
+
+                <!-- Load: right, top -->
+                <div id="load-component" class="flow-node load" style="left:85%; top:26.2%" role="button" tabindex="0" aria-label="Load details">
+                    <span class="status-indicator status-inactive" id="load-status"></span>
+                    <img src="{{ url_for('static', filename='icons/load.svg') }}" alt="" class="flow-icon">
+                    <div class="flow-val"><span id="load-power">0</span><small>W</small></div>
+                    <div class="flow-sub"><span id="load-voltage">0</span> V · <span id="load-percentage">0</span>%</div>
+                    <div class="flow-name">Load</div>
+                </div>
+
+                <!-- Battery: right, bottom -->
+                <div id="battery-component" class="flow-node battery" style="left:85%; top:73.8%" role="button" tabindex="0" aria-label="Battery details">
                     <span class="status-indicator status-inactive" id="battery-status"></span>
+                    <svg class="battery-svg" viewBox="0 0 60 88" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <rect x="20" y="0" width="20" height="6" rx="2" style="fill: var(--battery)"/>
+                        <rect x="2" y="8" width="56" height="78" rx="8" ry="8" style="fill: color-mix(in srgb, var(--battery) 8%, transparent); stroke: var(--battery)" stroke-width="2.5"/>
+                        <rect id="battery-fill" class="battery-fill" x="6" y="84" width="48" height="0" rx="4" ry="4" fill="#34D399"/>
+                    </svg>
+                    <div class="flow-val"><span id="battery-percentage">0</span><small>%</small></div>
+                    <div class="flow-sub"><span id="battery-voltage">0</span> V</div>
+                    <div class="flow-name">Battery</div>
                 </div>
 
-                <!-- Connection Labels -->
-                <div id="grid-label" class="flow-label opacity-0" style="top: 32%; left: 26%;">
-                    <div class="text-blue-300 text-xs font-medium bg-black/40 px-2 py-1 rounded">
-                        <span id="grid-flow">Backup</span>
-                    </div>
-                </div>
-                <div id="load-label" class="flow-label opacity-0" style="top: 32%; right: 26%;">
-                    <div class="text-purple-300 text-xs font-medium bg-black/40 px-2 py-1 rounded">
-                        <span id="load-flow">0W</span>
-                    </div>
-                </div>
-                <div id="solar-label" class="flow-label opacity-0" style="bottom: 32%; left: 26%;">
-                    <div class="text-yellow-300 text-xs font-medium bg-black/40 px-2 py-1 rounded">
-                        <span id="solar-flow">0W</span>
-                    </div>
-                </div>
-                <div id="battery-label" class="flow-label opacity-0" style="bottom: 32%; right: 26%;">
-                    <div class="text-green-300 text-xs font-medium bg-black/40 px-2 py-1 rounded">
-                        <span id="battery-flow">Idle</span>
-                    </div>
+                <!-- Flow labels sit on the curves -->
+                <div id="solar-label" class="flow-label solar" style="left:33%; top:34%; opacity:0"><span id="solar-flow">0 W</span></div>
+                <div id="grid-label" class="flow-label grid" style="left:33%; top:66%; opacity:0"><span id="grid-flow">Backup</span></div>
+                <div id="load-label" class="flow-label load" style="left:67%; top:34%; opacity:0"><span id="load-flow">0 W</span></div>
+                <div id="battery-label" class="flow-label battery" style="left:67%; top:66%; opacity:0"><span id="battery-flow">Idle</span></div>
+            </div>
+            <p class="flow-hint"><i class="fas fa-hand-pointer"></i>Tap a component for details and settings</p>
+        </section>
+
+        <!-- Live readings -->
+        <section class="grid-4" style="margin-top:18px" aria-label="Live readings">
+            <div class="metric" data-tone="solar">
+                <div class="metric-h"><span>Solar</span><i class="fas fa-solar-panel"></i></div>
+                <div class="metric-v"><span id="solar-power-status">0</span><span class="u">W</span></div>
+                <div class="metric-rows">
+                    <div class="metric-row"><span>Voltage</span><span><span id="solar-voltage-status">0</span> V</span></div>
+                    <div class="metric-row"><span>Current</span><span><span id="solar-current">0</span> A</span></div>
                 </div>
             </div>
-            <p class="text-white/40 text-xs text-center mt-2">
-                <i class="fas fa-hand-pointer mr-1"></i>
-                Tap any component for details and settings
-            </p>
-
-            <!-- Live Power Cards -->
-            <div class="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <!-- Solar -->
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="flex items-center justify-between text-yellow-300 text-sm font-medium">
-                        <span>Solar Production</span>
-                        <i class="fas fa-solar-panel text-yellow-300/70"></i>
-                    </div>
-                    <div class="text-white text-2xl font-bold mt-1">
-                        <span id="solar-power-status">0</span><span class="text-sm text-white/60 ml-1">W</span>
-                    </div>
-                    <div class="flex justify-between text-yellow-200/80 text-xs mt-2">
-                        <span><span id="solar-voltage-status">0</span> V</span>
-                        <span><span id="solar-current">0</span> A</span>
-                    </div>
-                </div>
-
-                <!-- Battery -->
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="flex items-center justify-between text-green-300 text-sm font-medium">
-                        <span>Battery</span>
-                        <i class="fas fa-car-battery text-green-300/70"></i>
-                    </div>
-                    <div class="text-white text-2xl font-bold mt-1">
-                        <span id="battery-percentage-status">0</span><span class="text-sm text-white/60 ml-1">%</span>
-                    </div>
-                    <div class="text-green-200/80 text-xs mt-2 flex justify-between">
-                        <span id="battery-direction-label">Idle</span>
-                        <span><span id="battery-power-status">0</span> W</span>
-                    </div>
-                    <div class="text-green-200/60 text-xs flex justify-between">
-                        <span><span id="battery-voltage-status">0</span> V</span>
-                        <span><span id="battery-current">0</span> A</span>
-                    </div>
-                </div>
-
-                <!-- Grid -->
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="flex items-center justify-between text-blue-300 text-sm font-medium">
-                        <span>Grid</span>
-                        <i class="fas fa-plug text-blue-300/70"></i>
-                    </div>
-                    <div class="text-white text-2xl font-bold mt-1">
-                        <span id="grid-power-status">0</span><span class="text-sm text-white/60 ml-1">W</span>
-                        <span id="grid-estimated" class="text-[10px] uppercase tracking-wide text-blue-200/60 ml-1">est.</span>
-                    </div>
-                    <div class="flex justify-between text-blue-200/80 text-xs mt-2">
-                        <span><span id="grid-voltage-status">0</span> V</span>
-                        <span><span id="grid-frequency-status">0</span> Hz</span>
-                    </div>
-                </div>
-
-                <!-- Load -->
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="flex items-center justify-between text-purple-300 text-sm font-medium">
-                        <span>Load</span>
-                        <i class="fas fa-house text-purple-300/70"></i>
-                    </div>
-                    <div class="text-white text-2xl font-bold mt-1">
-                        <span id="load-power-status">0</span><span class="text-sm text-white/60 ml-1">W</span>
-                    </div>
-                    <div class="flex justify-between text-purple-200/80 text-xs mt-2">
-                        <span><span id="load-apparent">0</span> VA</span>
-                        <span>PF <span id="load-pf">0.00</span></span>
-                    </div>
-                    <div class="text-purple-200/60 text-xs flex justify-between">
-                        <span><span id="load-voltage-status">0</span> V</span>
-                        <span><span id="load-percentage">0</span>%</span>
-                    </div>
+            <div class="metric" data-tone="battery">
+                <div class="metric-h"><span>Battery</span><i class="fas fa-car-battery"></i></div>
+                <div class="metric-v"><span id="battery-percentage-status">0</span><span class="u">%</span></div>
+                <div class="metric-rows">
+                    <div class="metric-row"><span>State</span><span id="battery-direction-label">Idle</span></div>
+                    <div class="metric-row"><span>Power</span><span><span id="battery-power-status">0</span> W</span></div>
+                    <div class="metric-row"><span>Voltage</span><span><span id="battery-voltage-status">0</span> V</span></div>
+                    <div class="metric-row"><span>Current</span><span><span id="battery-current">0</span> A</span></div>
                 </div>
             </div>
-
-            <!-- Today's Energy Summary -->
-            <div class="mt-6 bg-white/10 backdrop-blur-sm rounded-lg p-5">
-                <div class="flex flex-wrap items-baseline justify-between mb-3">
-                    <h3 class="text-white font-semibold">Today</h3>
-                    <span class="text-white/60 text-xs" id="today-date">—</span>
-                </div>
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <div>
-                        <div class="text-yellow-300 text-xs">Solar</div>
-                        <div class="text-white text-xl font-bold"><span id="today-solar">0.00</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                        <div class="text-white/40 text-[10px] mt-0.5">Peak <span id="today-solar-peak">0</span> W</div>
-                    </div>
-                    <div>
-                        <div class="text-blue-300 text-xs">Grid Import</div>
-                        <div class="text-white text-xl font-bold"><span id="today-grid">0.00</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                        <div class="text-white/40 text-[10px] mt-0.5">Peak <span id="today-grid-peak">0</span> W</div>
-                    </div>
-                    <div>
-                        <div class="text-purple-300 text-xs">Load</div>
-                        <div class="text-white text-xl font-bold"><span id="today-load">0.00</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                        <div class="text-white/40 text-[10px] mt-0.5">Peak <span id="today-load-peak">0</span> W</div>
-                    </div>
-                    <div>
-                        <div class="text-green-300 text-xs">Bat. Charge / Discharge</div>
-                        <div class="text-white text-base font-semibold">
-                            <span id="today-charge">0.00</span> / <span id="today-discharge">0.00</span>
-                            <span class="text-xs text-white/60 ml-1">kWh</span>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="text-emerald-300 text-xs">Self-Sufficiency</div>
-                        <div class="text-white text-xl font-bold"><span id="today-selfsuff">0</span><span class="text-xs text-white/60 ml-1">%</span></div>
-                        <div class="text-white/50 text-[10px] mt-0.5">Solar share <span id="today-solarfrac">0</span>%</div>
-                    </div>
+            <div class="metric" data-tone="grid">
+                <div class="metric-h"><span>Grid</span><i class="fas fa-plug"></i></div>
+                <div class="metric-v"><span id="grid-power-status">0</span><span class="u">W</span><span class="tag" id="grid-estimated" title="Grid power is not measured by the inverter; it is derived from load, solar and battery">est.</span></div>
+                <div class="metric-rows">
+                    <div class="metric-row"><span>Voltage</span><span><span id="grid-voltage-status">0</span> V</span></div>
+                    <div class="metric-row"><span>Frequency</span><span><span id="grid-frequency-status">0</span> Hz</span></div>
                 </div>
             </div>
+            <div class="metric" data-tone="load">
+                <div class="metric-h"><span>Load</span><i class="fas fa-house"></i></div>
+                <div class="metric-v"><span id="load-power-status">0</span><span class="u">W</span></div>
+                <div class="metric-rows">
+                    <div class="metric-row"><span>Apparent</span><span><span id="load-apparent">0</span> VA</span></div>
+                    <div class="metric-row"><span>Power factor</span><span id="load-pf">0.00</span></div>
+                    <div class="metric-row"><span>Voltage</span><span><span id="load-voltage-status">0</span> V</span></div>
+                    <div class="metric-row"><span>Of capacity</span><span><span id="load-percentage-status">0</span>%</span></div>
+                </div>
+            </div>
+        </section>
 
-            <!-- Savings snapshot -->
-            <a href="/savings" class="block mt-6 bg-gradient-to-r from-amber-500/15 to-emerald-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 border border-white/10 rounded-lg p-5 transition-colors group">
-                <div class="flex flex-wrap items-baseline justify-between mb-3">
-                    <h3 class="text-white font-semibold flex items-center gap-2">
-                        <i class="fas fa-coins text-yellow-300"></i>
-                        Cost Savings
-                    </h3>
-                    <span class="text-white/40 text-xs group-hover:text-white/70">Open dashboard <i class="fas fa-arrow-right ml-1"></i></span>
+        <!-- Today + savings -->
+        <section class="grid-2" style="margin-top:18px">
+            <div class="card">
+                <div class="card-h">
+                    <h2 class="card-title"><i class="fas fa-calendar-day"></i>Today</h2>
+                    <div class="card-actions"><span class="pill" id="today-date">—</span></div>
                 </div>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                        <div class="text-yellow-300 text-xs">Today</div>
-                        <div class="text-white text-xl font-bold">Rs <span id="sv-today">—</span></div>
-                    </div>
-                    <div>
-                        <div class="text-blue-300 text-xs">This Month</div>
-                        <div class="text-white text-xl font-bold">Rs <span id="sv-month">—</span></div>
-                    </div>
-                    <div>
-                        <div class="text-emerald-300 text-xs">Lifetime</div>
-                        <div class="text-white text-xl font-bold">Rs <span id="sv-lifetime">—</span></div>
-                    </div>
-                    <div>
-                        <div class="text-purple-300 text-xs">Payback</div>
-                        <div class="text-white text-xl font-bold" id="sv-payback">—</div>
-                    </div>
+                <div class="mini-grid">
+                    <div class="mini" data-tone="solar"><div class="l">Solar</div><div class="v"><span id="today-solar">0.00</span><small>kWh</small></div><div class="s">Peak <span id="today-solar-peak">0</span> W</div></div>
+                    <div class="mini" data-tone="grid"><div class="l">Grid import</div><div class="v"><span id="today-grid">0.00</span><small>kWh</small></div><div class="s">Peak <span id="today-grid-peak">0</span> W</div></div>
+                    <div class="mini" data-tone="load"><div class="l">Load</div><div class="v"><span id="today-load">0.00</span><small>kWh</small></div><div class="s">Peak <span id="today-load-peak">0</span> W</div></div>
+                    <div class="mini" data-tone="battery"><div class="l">Battery in / out</div><div class="v"><span id="today-charge">0.00</span> / <span id="today-discharge">0.00</span><small>kWh</small></div><div class="s">charge / discharge</div></div>
+                    <div class="mini" data-tone="ok"><div class="l">Self-sufficiency</div><div class="v"><span id="today-selfsuff">0</span><small>%</small></div><div class="s">Solar share <span id="today-solarfrac">0</span>%</div></div>
                 </div>
-                <div id="sv-cliff" class="hidden mt-3 text-amber-200 text-sm flex items-start gap-2">
-                    <i class="fas fa-triangle-exclamation mt-0.5"></i>
-                    <span id="sv-cliff-text"></span>
+            </div>
+            <a href="/savings" class="card card-link">
+                <div class="card-h">
+                    <h2 class="card-title"><i class="fas fa-coins"></i>Cost savings</h2>
+                    <div class="card-actions"><span class="muted" style="font-size:12.5px">Open savings <i class="fas fa-arrow-right"></i></span></div>
+                </div>
+                <div class="mini-grid four">
+                    <div class="mini" data-tone="solar"><div class="l">Today</div><div class="v">Rs <span id="sv-today">—</span></div></div>
+                    <div class="mini" data-tone="grid"><div class="l">This cycle</div><div class="v">Rs <span id="sv-month">—</span></div></div>
+                    <div class="mini" data-tone="ok"><div class="l">Lifetime</div><div class="v">Rs <span id="sv-lifetime">—</span></div></div>
+                    <div class="mini" data-tone="load"><div class="l">Payback</div><div class="v" id="sv-payback">—</div></div>
+                </div>
+                <div id="sv-cliff" class="banner banner-warn hidden" style="margin-top:14px">
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <div class="banner-sub" id="sv-cliff-text" style="margin-top:0"></div>
                 </div>
             </a>
+        </section>
 
-            <!-- System Information -->
-            <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-gray-300 text-xs">Inverter Temp</div>
-                    <div class="text-white text-lg font-bold"><span id="system-temp">--</span><span class="text-xs text-white/60 ml-1">°C</span></div>
-                    <div class="text-white/40 text-[10px] mt-1">Today peak <span id="temp-max">--</span>°C</div>
+        <!-- System -->
+        <section class="kpi-grid" style="margin-top:18px" aria-label="System">
+            <div class="kpi" data-tone="warn">
+                <div class="kpi-l">Inverter temperature</div>
+                <div class="kpi-v sm"><span id="system-temp">--</span><span class="u">°C</span></div>
+                <div class="kpi-s">Today's peak <span id="temp-max">--</span> °C</div>
+            </div>
+            <div class="kpi" data-tone="info">
+                <div class="kpi-l">DC bus</div>
+                <div class="kpi-v sm"><span id="bus-voltage">--</span><span class="u">V</span></div>
+                <div class="kpi-s">Internal bus voltage</div>
+            </div>
+            <div class="kpi" data-tone="ok">
+                <div class="kpi-l">Connection</div>
+                <div class="kpi-v sm" id="connection-status">Connecting…</div>
+                <div class="kpi-s">Last update <span id="last-update">--:--:--</span></div>
+            </div>
+            <div class="kpi" data-tone="load">
+                <div class="kpi-l">Reading cycle</div>
+                <div class="kpi-v sm"><span id="reading-duration">--</span><span class="u">ms</span></div>
+                <div class="kpi-s">Errors <span id="reading-errors">0</span> of <span id="reading-total">0</span> reads</div>
+            </div>
+        </section>
+
+        <!-- Live chart -->
+        <section class="card" style="margin-top:18px">
+            <div class="card-h">
+                <div>
+                    <h2 class="card-title"><i class="fas fa-wave-square"></i>Live power</h2>
+                    <div class="chart-legend-hint">Drag to zoom · wheel or pinch to zoom · shift + drag to pan · double-click to reset</div>
                 </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-gray-300 text-xs">DC Bus Voltage</div>
-                    <div class="text-white text-lg font-bold"><span id="bus-voltage">--</span><span class="text-xs text-white/60 ml-1">V</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-gray-300 text-xs">Connection</div>
-                    <div class="text-white text-lg font-bold" id="connection-status">Connecting…</div>
-                    <div class="text-white/40 text-[10px] mt-1">Last update <span id="last-update">--:--:--</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-gray-300 text-xs">Reading Cycle</div>
-                    <div class="text-white text-lg font-bold"><span id="reading-duration">--</span><span class="text-xs text-white/60 ml-1">ms</span></div>
-                    <div class="text-white/40 text-[10px] mt-1">Errors <span id="reading-errors">0</span> / <span id="reading-total">0</span></div>
+                <div class="card-actions">
+                    <div class="seg" role="group" id="live-range" aria-label="Time range">
+                        <button type="button" data-min="5"    class="live-range-btn">5m</button>
+                        <button type="button" data-min="30"   class="live-range-btn">30m</button>
+                        <button type="button" data-min="120"  class="live-range-btn">2h</button>
+                        <button type="button" data-min="360"  class="live-range-btn">6h</button>
+                        <button type="button" data-min="720"  class="live-range-btn">12h</button>
+                        <button type="button" data-min="1440" class="live-range-btn">24h</button>
+                    </div>
+                    <button type="button" id="live-reset-zoom" class="btn btn-sm hidden"><i class="fa-solid fa-rotate-left"></i>Reset zoom</button>
                 </div>
             </div>
-
-            <!-- Live Power Chart -->
-            <div class="mt-8 bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
-                    <div>
-                        <h2 class="text-white text-lg font-semibold">Live Power (W)</h2>
-                        <div class="text-white/50 text-[11px] mt-1">
-                            Drag to zoom a region · wheel/pinch to zoom · shift+drag to pan
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <div class="inline-flex rounded-lg overflow-hidden border border-white/20" role="group" id="live-range">
-                            <button data-min="5"    class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors">5m</button>
-                            <button data-min="30"   class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">30m</button>
-                            <button data-min="120"  class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">2h</button>
-                            <button data-min="360"  class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">6h</button>
-                            <button data-min="720"  class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">12h</button>
-                            <button data-min="1440" class="live-range-btn px-3 py-1 text-sm text-white hover:bg-white/10 transition-colors border-l border-white/20">24h</button>
-                        </div>
-                        <button id="live-reset-zoom"
-                                class="hidden px-3 py-1 text-sm text-white bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg transition-colors">
-                            <i class="fa-solid fa-rotate-left mr-1"></i>Reset Zoom
-                        </button>
-                    </div>
-                </div>
-                <div class="relative" style="height: 380px;">
-                    <canvas id="live-chart"></canvas>
-                </div>
+            <div class="chart-box tall">
+                <canvas id="live-chart"></canvas>
             </div>
-        </div>
-    </div>
+        </section>
+
+        <footer class="foot">
+            <span>Inverter Monitor</span>
+            <span class="mono">build {{ app_version }}</span>
+        </footer>
+    </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
-    <script src="{{ url_for('static', filename='js/solar_flow.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui.js') }}?v={{ app_version }}"></script>
+    <script src="{{ url_for('static', filename='js/solar_flow.js') }}?v={{ app_version }}"></script>
     <script>
     (function () {
         const ctx = document.getElementById('live-chart');
         if (!ctx) return;
+        if (window.Chart && window.ChartZoom) Chart.register(window.ChartZoom);
 
-        // Register the zoom plugin with Chart.js if it loaded. Safe fallback if the CDN is unreachable.
-        if (window.Chart && window.ChartZoom) {
-            Chart.register(window.ChartZoom);
-        }
-
+        const pal = () => UI.palette();
         const metrics = [
-            { key: 'solar',   label: 'Solar',   border: '#FCD34D' },
-            { key: 'grid',    label: 'Grid',    border: '#60A5FA' },
-            { key: 'load',    label: 'Load',    border: '#A78BFA' },
-            { key: 'battery', label: 'Battery', border: '#34D399', dashed: true },
+            { key: 'solar',   label: 'Solar' },
+            { key: 'grid',    label: 'Grid' },
+            { key: 'load',    label: 'Load' },
+            { key: 'battery', label: 'Battery', dashed: true },
         ];
 
-        // One dataset per power metric (the bucket average), plus a hidden-by-default grid-voltage
-        // overlay on a secondary right axis — click its legend entry to reveal it.
+        // One dataset per power metric plus a hidden grid-voltage overlay on a right axis
+        // (click its legend entry to reveal it).
         const datasets = [];
         const idx = {};
+        const p0 = pal();
         metrics.forEach((m) => {
             idx[m.key] = datasets.length;
             datasets.push({
                 label: m.label, data: [],
-                borderColor: m.border,
-                backgroundColor: 'transparent',
-                pointRadius: 0,
-                borderWidth: 2,
-                fill: false,
-                tension: 0.25,
-                spanGaps: true,
-                yAxisID: 'y',
+                borderColor: p0[m.key], backgroundColor: 'transparent',
+                pointRadius: 0, borderWidth: 2, fill: false, tension: 0.25, spanGaps: true, yAxisID: 'y',
                 ...(m.dashed ? { borderDash: [6, 4] } : {}),
             });
         });
         idx.voltage = datasets.length;
         datasets.push({
-            label: 'Grid V', data: [],
-            borderColor: '#F472B6',
-            backgroundColor: 'transparent',
-            pointRadius: 0,
-            borderWidth: 1.5,
-            borderDash: [2, 3],
-            fill: false,
-            tension: 0.25,
-            spanGaps: true,
-            yAxisID: 'y1',
-            hidden: true,
+            label: 'Grid V', data: [], borderColor: p0.voltage, backgroundColor: 'transparent',
+            pointRadius: 0, borderWidth: 1.5, borderDash: [2, 3], fill: false, tension: 0.25, spanGaps: true,
+            yAxisID: 'y1', hidden: true,
         });
 
         let rangeMinutes = 30;
-        let bucketSeconds = 15;   // updated from server response; used to size the gap-break threshold
+        let bucketSeconds = 15;   // from the server; sizes the gap-break threshold
         let isZoomed = false;     // when true, stop rolling the axis and stop trimming old points
-        // The Pi (data source) and this browser may have skewed clocks. Historic buckets carry the
-        // SERVER timestamp; we measure the offset from /recent-readings' now_ms and apply it to every
-        // browser-clock value (live append, axis roll, trim) so both sit in ONE time domain. Without
-        // this the live tail drifts away from the historic line — the "doesn't update" seam.
+        // The Pi and this browser may disagree on the time. Historic buckets carry the server
+        // timestamp; we measure the offset from /recent-readings' now_ms and apply it to every
+        // browser-clock value so the live tail and the history share one time domain.
         let clockOffset = 0;
-        let liveGaps = [];        // [{start,end}] server-time reader-outage windows, shaded on the chart
+        let liveGaps = [];        // [{start,end}] reader-outage windows, shaded on the chart
         const nowServer = () => Date.now() + clockOffset;
 
-        // Break the line only on REAL reader outages. The server buckets the series at
-        // `bucketSeconds`, so adjacent points are normally that far apart. We break only when more
-        // than ~2.5 buckets are missing, with a 60s floor. This is the fix for ">2h renders nothing":
-        // previously the threshold was a flat 60s while 6h/12h/24h buckets are 180/360/720s apart, so
-        // Chart.js broke the line at EVERY point (and with pointRadius:0 the plot looked empty).
+        // Break the line only on real reader outages: more than ~2.5 buckets missing, 60 s floor.
         const READER_GAP_FLOOR_MS = 60 * 1000;
-        const gapThresholdMs = () =>
-            bucketSeconds > 0 ? Math.max(READER_GAP_FLOOR_MS, bucketSeconds * 2.5 * 1000) : READER_GAP_FLOOR_MS;
+        const gapThresholdMs = () => (bucketSeconds > 0 ? Math.max(READER_GAP_FLOOR_MS, bucketSeconds * 2.5 * 1000) : READER_GAP_FLOOR_MS);
         function applyGapThreshold() {
             const gapMs = gapThresholdMs();
             chart.data.datasets.forEach((ds) => { ds.spanGaps = gapMs; });
         }
 
-        // ---- inline plugins (draw-only; no interaction with the data pipeline) ------------------
-
-        // Shade reader-outage windows so a break in the line reads as "monitor was down" rather
-        // than "the system produced zero".
+        // Shade reader-outage windows so a break reads as "monitor was down", not "zero output".
         const gapShadePlugin = {
             id: 'gapShade',
             beforeDatasetsDraw(c) {
                 if (!liveGaps.length) return;
                 const { ctx: g, chartArea: area, scales } = c;
-                const xs = scales.x;
                 g.save();
-                g.fillStyle = 'rgba(239, 68, 68, 0.10)';
+                g.fillStyle = UI.withAlpha(pal().danger, 0.10);
                 liveGaps.forEach((gap) => {
-                    let x1 = Math.max(area.left, Math.min(area.right, xs.getPixelForValue(gap.start)));
-                    let x2 = Math.max(area.left, Math.min(area.right, xs.getPixelForValue(gap.end)));
+                    const x1 = Math.max(area.left, Math.min(area.right, scales.x.getPixelForValue(gap.start)));
+                    const x2 = Math.max(area.left, Math.min(area.right, scales.x.getPixelForValue(gap.end)));
                     if (x2 - x1 >= 1) g.fillRect(x1, area.top, x2 - x1, area.bottom - area.top);
                 });
                 g.restore();
             },
         };
 
-        // Draw the latest value of each visible series as a small pill pinned to the right edge,
-        // so the current reading is legible without hovering.
+        // Pin the latest value of each visible series to the right edge.
         const endLabelPlugin = {
             id: 'endLabels',
             afterDatasetsDraw(c) {
                 const { ctx: g, chartArea: area } = c;
+                const p = pal();
                 g.save();
-                g.font = '600 11px system-ui, -apple-system, sans-serif';
+                g.font = `700 11px ${UI.cssVar('--font-mono') || 'monospace'}`;
                 g.textBaseline = 'middle';
                 g.textAlign = 'left';
                 c.data.datasets.forEach((ds, di) => {
@@ -744,8 +365,8 @@
                     const text = `${Math.round(last.y)}${unit}`;
                     const w = g.measureText(text).width + 10;
                     const x = area.right - w - 2;
-                    g.fillStyle = 'rgba(15, 23, 42, 0.78)';
-                    if (g.roundRect) { g.beginPath(); g.roundRect(x, py - 9, w, 18, 4); g.fill(); }
+                    g.fillStyle = p.surface3;
+                    if (g.roundRect) { g.beginPath(); g.roundRect(x, py - 9, w, 18, 5); g.fill(); }
                     else { g.fillRect(x, py - 9, w, 18); }
                     g.fillStyle = ds.borderColor;
                     g.fillText(text, x + 5, py + 0.5);
@@ -754,29 +375,20 @@
             },
         };
 
+        const t0 = UI.chartTheme();
         const chart = new Chart(ctx, {
             type: 'line',
             data: { datasets },
             plugins: [gapShadePlugin, endLabelPlugin],
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false,
-                parsing: false,
-                spanGaps: true,
-                normalized: true,
+                responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+                spanGaps: true, normalized: true,
                 interaction: { mode: 'index', axis: 'x', intersect: false },
                 plugins: {
                     decimation: { enabled: true, algorithm: 'lttb', samples: 300 },
-                    legend: {
-                        labels: { color: '#E5E7EB', usePointStyle: true, boxWidth: 8 },
-                    },
+                    legend: { labels: t0.legend },
                     tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.92)',
-                        titleColor: '#fff',
-                        bodyColor: '#fff',
-                        borderColor: 'rgba(255,255,255,0.15)',
-                        borderWidth: 1,
+                        ...t0.tooltip,
                         callbacks: {
                             title: (items) => {
                                 if (!items.length) return '';
@@ -785,33 +397,16 @@
                                     ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                                     : d.toLocaleTimeString();
                             },
-                            label: (c) => {
-                                const unit = c.dataset.yAxisID === 'y1' ? 'V' : 'W';
-                                return `${c.dataset.label}: ${Math.round(c.parsed.y)} ${unit}`;
-                            },
+                            label: (c) => `${c.dataset.label}: ${Math.round(c.parsed.y)} ${c.dataset.yAxisID === 'y1' ? 'V' : 'W'}`,
                         },
                     },
                     zoom: {
-                        limits: {
-                            // Don't let the user zoom out past the loaded window.
-                            x: { minRange: 10 * 1000 },
-                        },
-                        pan: {
-                            enabled: true,
-                            mode: 'x',
-                            modifierKey: 'shift',
-                            onPanStart: () => { isZoomed = true; showResetZoom(true); },
-                        },
+                        limits: { x: { minRange: 10 * 1000 } },
+                        pan: { enabled: true, mode: 'x', modifierKey: 'shift', onPanStart: () => { isZoomed = true; showResetZoom(true); } },
                         zoom: {
                             wheel: { enabled: true, speed: 0.08 },
                             pinch: { enabled: true },
-                            drag: {
-                                enabled: true,
-                                backgroundColor: 'rgba(96, 165, 250, 0.18)',
-                                borderColor: 'rgba(96, 165, 250, 0.9)',
-                                borderWidth: 1,
-                                threshold: 6,
-                            },
+                            drag: { enabled: true, backgroundColor: UI.withAlpha(p0.grid, 0.18), borderColor: p0.grid, borderWidth: 1, threshold: 6 },
                             mode: 'x',
                             onZoomStart: () => { isZoomed = true; },
                             onZoom: () => { showResetZoom(true); },
@@ -824,53 +419,50 @@
                         min: Date.now() - 30 * 60 * 1000,
                         max: Date.now(),
                         ticks: {
-                            color: '#CBD5E1',
-                            maxRotation: 0,
-                            autoSkip: true,
-                            maxTicksLimit: 8,
-                            font: { size: 11 },
-                            // Regular function: Chart.js binds `this` to the scale, so we read the
-                            // visible span without touching `chart` (which is still in its TDZ
-                            // during the very first render pass).
+                            color: t0.tick, maxRotation: 0, autoSkip: true, maxTicksLimit: 8,
                             callback: function (v) {
                                 const d = new Date(v);
-                                const span = (this && typeof this.max === 'number' && typeof this.min === 'number')
-                                    ? (this.max - this.min)
-                                    : rangeMinutes * 60 * 1000;
-                                if (span > 12 * 60 * 60 * 1000) {
-                                    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                                }
-                                if (span > 30 * 60 * 1000) {
-                                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                }
+                                const span = (this && typeof this.max === 'number' && typeof this.min === 'number') ? (this.max - this.min) : rangeMinutes * 60 * 1000;
+                                if (span > 12 * 60 * 60 * 1000) return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                                if (span > 30 * 60 * 1000) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                 return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                             },
                         },
-                        grid: { color: 'rgba(255,255,255,0.14)' },
-                        border: { color: 'rgba(255,255,255,0.25)' },
+                        grid: { color: t0.grid },
+                        border: { color: t0.border },
                     },
                     y: {
-                        ticks: { color: '#CBD5E1', font: { size: 11 }, callback: (v) => `${v} W` },
-                        grid: { color: 'rgba(255,255,255,0.14)' },
-                        border: { color: 'rgba(255,255,255,0.25)' },
+                        ticks: { color: t0.tick, callback: (v) => `${v} W` },
+                        grid: { color: t0.grid },
+                        border: { color: t0.border },
                         beginAtZero: true,
                     },
                     y1: {
-                        // Only drawn when the Grid V series is toggled on.
-                        display: 'auto',
-                        position: 'right',
-                        beginAtZero: false,
-                        ticks: { color: '#F9A8D4', font: { size: 11 }, callback: (v) => `${v} V` },
+                        display: 'auto', position: 'right', beginAtZero: false,
+                        ticks: { color: p0.voltage, callback: (v) => `${v} V` },
                         grid: { drawOnChartArea: false },
-                        border: { color: 'rgba(244,114,182,0.4)' },
+                        border: { color: UI.withAlpha(p0.voltage, 0.4) },
                     },
                 },
             },
         });
         applyGapThreshold();
 
+        // Recolour when the theme flips.
+        UI.onTheme(() => {
+            const p = pal();
+            const t = UI.chartTheme();
+            metrics.forEach((m) => { chart.data.datasets[idx[m.key]].borderColor = p[m.key]; });
+            chart.data.datasets[idx.voltage].borderColor = p.voltage;
+            chart.options.plugins.legend.labels.color = t.legend.color;
+            Object.assign(chart.options.plugins.tooltip, t.tooltip);
+            ['x', 'y'].forEach((k) => { chart.options.scales[k].ticks.color = t.tick; chart.options.scales[k].grid.color = t.grid; chart.options.scales[k].border.color = t.border; });
+            chart.options.scales.y1.ticks.color = p.voltage;
+            chart.update('none');
+        });
+
         function rollAxis() {
-            if (isZoomed) return;            // don't fight the user's zoom
+            if (isZoomed) return;
             const now = nowServer();
             chart.options.scales.x.min = now - rangeMinutes * 60 * 1000;
             chart.options.scales.x.max = now;
@@ -879,39 +471,25 @@
 
         const buttons = document.querySelectorAll('.live-range-btn');
         const resetBtn = document.getElementById('live-reset-zoom');
-        const activeClasses = ['bg-blue-600', 'hover:bg-blue-700'];
         const ALLOWED_RANGES = [5, 30, 120, 360, 720, 1440];
 
         function setActive(min) {
-            buttons.forEach((b) => {
-                const on = Number(b.dataset.min) === min;
-                b.classList.toggle(activeClasses[0], on);
-                b.classList.toggle(activeClasses[1], on);
-            });
+            buttons.forEach((b) => b.classList.toggle('active', Number(b.dataset.min) === min));
             try { localStorage.setItem('solar_live_range', String(min)); } catch (e) { /* ignore */ }
         }
+        function showResetZoom(on) { if (resetBtn) resetBtn.classList.toggle('hidden', !on); }
 
-        function showResetZoom(on) {
-            if (!resetBtn) return;
-            resetBtn.classList.toggle('hidden', !on);
-        }
-
-        // Loading overlay anchored to the chart's position:relative wrapper.
         const wrap = ctx.parentElement;
         let loadingEl = null;
         function showLoading() {
             if (!wrap || loadingEl) return;
             loadingEl = document.createElement('div');
-            loadingEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#CBD5E1;font-size:0.9rem;background:rgba(15,23,42,0.25);pointer-events:none;z-index:5;';
-            loadingEl.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Loading…';
+            loadingEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-2);font-size:0.9rem;background:color-mix(in srgb, var(--surface) 45%, transparent);pointer-events:none;z-index:5;border-radius:12px;';
+            loadingEl.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:8px"></i>Loading…';
             wrap.appendChild(loadingEl);
         }
-        function hideLoading() {
-            if (loadingEl) { loadingEl.remove(); loadingEl = null; }
-        }
+        function hideLoading() { if (loadingEl) { loadingEl.remove(); loadingEl = null; } }
 
-        // Reader-outage windows derived from the loaded buckets, using the same threshold the line
-        // uses to break — so the shaded regions line up exactly with the gaps in the line.
         function recomputeGaps(points) {
             const gaps = [];
             const thr = gapThresholdMs();
@@ -926,7 +504,6 @@
         async function loadData(min) {
             rangeMinutes = min;
             setActive(min);
-            // Switching range always exits zoom mode and reloads the full window.
             isZoomed = false;
             showResetZoom(false);
             showLoading();
@@ -937,11 +514,9 @@
                 if (data && data.bucket_seconds) bucketSeconds = Number(data.bucket_seconds);
                 if (data && typeof data.now_ms === 'number') clockOffset = data.now_ms - Date.now();
                 metrics.forEach((m) => {
-                    chart.data.datasets[idx[m.key]].data =
-                        points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_avg`] }));
+                    chart.data.datasets[idx[m.key]].data = points.map((p) => ({ x: p.timestamp * 1000, y: p[`${m.key}_avg`] }));
                 });
-                chart.data.datasets[idx.voltage].data =
-                    points.map((p) => ({ x: p.timestamp * 1000, y: p.grid_voltage }));
+                chart.data.datasets[idx.voltage].data = points.map((p) => ({ x: p.timestamp * 1000, y: p.grid_voltage }));
                 recomputeGaps(points);
                 applyGapThreshold();
                 if (chart.resetZoom) chart.resetZoom('none');
@@ -954,23 +529,10 @@
         }
 
         buttons.forEach((b) => b.addEventListener('click', () => loadData(Number(b.dataset.min))));
-        if (resetBtn) {
-            resetBtn.addEventListener('click', () => {
-                if (chart.resetZoom) chart.resetZoom('none');
-                isZoomed = false;
-                showResetZoom(false);
-                rollAxis();
-            });
-        }
-        // Double-click / double-tap on the chart also resets the zoom.
-        ctx.addEventListener('dblclick', () => {
-            if (chart.resetZoom) chart.resetZoom('none');
-            isZoomed = false;
-            showResetZoom(false);
-            rollAxis();
-        });
+        const resetView = () => { if (chart.resetZoom) chart.resetZoom('none'); isZoomed = false; showResetZoom(false); rollAxis(); };
+        if (resetBtn) resetBtn.addEventListener('click', resetView);
+        ctx.addEventListener('dblclick', resetView);
 
-        // Restore the last-used range (falls back to 30m on a missing/invalid value).
         let initialRange = 30;
         try {
             const saved = parseInt(localStorage.getItem('solar_live_range'), 10);
@@ -978,25 +540,18 @@
         } catch (e) { /* ignore */ }
         loadData(initialRange);
 
-        // Trim any points older than the visible window so the arrays don't grow unbounded.
-        // While zoomed we keep the full loaded window so the user can pan/zoom freely.
         function trimOld() {
             if (isZoomed) return;
             const cutoff = nowServer() - rangeMinutes * 60 * 1000;
-            chart.data.datasets.forEach((ds) => {
-                while (ds.data.length && ds.data[0].x < cutoff) ds.data.shift();
-            });
+            chart.data.datasets.forEach((ds) => { while (ds.data.length && ds.data[0].x < cutoff) ds.data.shift(); });
         }
 
-        // Live append: every inverter_update from the WebSocket pushes one point per series. We
-        // stamp x with the SERVER time (timing.end_time) when present so live points share the
-        // historic buckets' time domain — this is what makes the line advance smoothly in realtime.
+        // Live append: every inverter_update pushes one point per series, stamped with the
+        // server time when present so live points share the historic buckets' time domain.
         window.addEventListener('inverter_update', (ev) => {
             const d = ev.detail;
             if (!d || !d.success || !d.metrics) return;
-            const t = (d.timing && typeof d.timing.end_time === 'number')
-                ? d.timing.end_time * 1000
-                : nowServer();
+            const t = (d.timing && typeof d.timing.end_time === 'number') ? d.timing.end_time * 1000 : nowServer();
             const m = d.metrics;
             const values = {
                 solar: m.solar && m.solar.power,
@@ -1004,27 +559,20 @@
                 load: m.load && (m.load.active_power != null ? m.load.active_power : m.load.power),
                 battery: m.battery && m.battery.power,
             };
-            metrics.forEach((metric) => {
-                const v = Number(values[metric.key]) || 0;
-                chart.data.datasets[idx[metric.key]].data.push({ x: t, y: v });
-            });
+            metrics.forEach((metric) => { chart.data.datasets[idx[metric.key]].data.push({ x: t, y: Number(values[metric.key]) || 0 }); });
             chart.data.datasets[idx.voltage].data.push({ x: t, y: Number(m.grid && m.grid.voltage) || 0 });
             trimOld();
             rollAxis();
         });
 
-        // Recover from a dropped socket: on reconnect, reload the full window so the chart can never
-        // be left silently stale. (Socket.IO fires 'connect' on every reconnect.) Skip while the
-        // user has zoomed/panned so we don't yank their view.
+        // After a dropped socket, reload the window so the chart can never be left stale.
         window.addEventListener('inverter_reconnect', () => { if (!isZoomed) loadData(rangeMinutes); });
-
-        // Rolling axis tick — paused automatically while the user has zoomed in.
         setInterval(rollAxis, 1000);
     })();
     </script>
 
     <script>
-    // Savings snapshot widget — fetches /savings/data once on load and every 5 minutes.
+    // Savings snapshot: /savings/data once on load and every 5 minutes.
     (function () {
         const fmtPKR = (n) => Math.round(Number(n) || 0).toLocaleString('en-PK');
         async function loadSavings() {
@@ -1036,13 +584,12 @@
                 document.getElementById('sv-month').textContent = fmtPKR(d.month?.savings_pkr);
                 document.getElementById('sv-lifetime').textContent = fmtPKR(d.lifetime?.total_savings_pkr);
                 const pb = d.payback || {};
-                document.getElementById('sv-payback').textContent =
-                    pb.status === 'ok' ? `${pb.payback_months} mo` : '—';
+                document.getElementById('sv-payback').textContent = pb.status === 'ok' ? `${pb.payback_months} mo` : '—';
                 const cliff = d.projection?.cliff_alert;
                 if (cliff) {
                     document.getElementById('sv-cliff').classList.remove('hidden');
                     document.getElementById('sv-cliff-text').textContent =
-                        `Heading toward ${cliff.next_slab} slab. Cut ${cliff.expected_overshoot_kwh} kWh of grid use to stay in cheaper ${cliff.current_slab}.`;
+                        `Heading toward the ${cliff.next_slab} slab. Cut ${cliff.expected_overshoot_kwh} kWh of grid use to stay in the cheaper ${cliff.current_slab} slab.`;
                 }
             } catch (e) { /* silent */ }
         }

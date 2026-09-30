@@ -4,365 +4,213 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Reports · Solar Energy System Monitor</title>
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/solar-panel.svg') }}">
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <style>
-        :root { color-scheme: dark; }
-        html, body { color-scheme: dark; }
-        input, select, textarea, button { color-scheme: dark; color: #fff; }
-        ::placeholder { color: rgba(255, 255, 255, 0.55); opacity: 1; }
-        select option { background-color: #0f172a; color: #fff; }
-
-        .tab-btn.active { background-color: rgb(37 99 235); color: white; }
-        .tab-btn { color: rgba(255,255,255,0.75); white-space: nowrap; }
-        .tab-btn:hover { background-color: rgba(255,255,255,0.1); }
-        input[type="date"], input[type="month"], input[type="number"], input[type="text"], input[type="password"], select {
-            color-scheme: dark;
-            background-color: rgba(255,255,255,0.08);
-            color: #fff;
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 0.5rem;
-            padding: 0.5rem 0.75rem;
-        }
-        /* Tweak the native date/month clear + picker indicators for dark backgrounds */
-        input[type="date"]::-webkit-calendar-picker-indicator,
-        input[type="month"]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(0.7); cursor: pointer; }
-
-        /* Tab status indicator (loading / error / empty) */
-        .tab-status {
-            display: inline-flex; align-items: center; gap: 0.4rem;
-            font-size: 0.72rem; padding: 0.2rem 0.55rem; border-radius: 999px;
-            margin-left: 0.5rem; vertical-align: middle;
-            transition: opacity 0.2s ease;
-        }
-        .tab-status.loading { background: rgba(96,165,250,0.15); color: #bfdbfe; border: 1px solid rgba(96,165,250,0.3); }
-        .tab-status.error   { background: rgba(239, 68, 68,0.15); color: #fecaca; border: 1px solid rgba(239, 68, 68,0.3); }
-        .tab-status.empty   { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.15); }
-        .panel-loading { opacity: 0.55; transition: opacity 0.2s ease; }
-
-        /* Active outage preset */
-        .out-preset.active, .gap-preset.active { background-color: rgb(37 99 235); color: #fff; }
-        .out-preset.active:hover, .gap-preset.active:hover { background-color: rgb(29 78 216); }
-    </style>
+    <title>Reports · Inverter Monitor</title>
+    {% include '_head.html' %}
 </head>
-<body class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">
+<body>
+    {% set active = 'reports' %}
+    {% include '_nav.html' %}
 
-    <!-- Top Navigation -->
-    <nav class="bg-black/30 backdrop-blur-sm border-b border-white/10">
-        <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <div class="flex items-center gap-2 text-white font-semibold shrink-0">
-                <i class="fas fa-solar-panel text-yellow-300"></i>
-                <div class="leading-tight">
-                    <div>Inverter Monitor</div>
-                    <div class="text-[8px] font-mono font-normal text-white/25 tracking-wide">build {{ app_version }}</div>
+    <main class="shell">
+        <div class="page-head">
+            <div>
+                <div class="eyebrow">History</div>
+                <h1 class="page-title">Reports <span id="tab-status" class="tab-status" style="display:none"></span></h1>
+                <p class="page-sub">Energy by day, month and year, plus every grid outage and every gap in the monitor's own readings.</p>
+            </div>
+            <div class="head-actions">
+                <div class="tabs" role="tablist" aria-label="Report">
+                    <button type="button" data-tab="day"     class="tab-btn active">Day</button>
+                    <button type="button" data-tab="month"   class="tab-btn">Month</button>
+                    <button type="button" data-tab="year"    class="tab-btn">Year</button>
+                    <button type="button" data-tab="outages" class="tab-btn">Grid outages</button>
+                    <button type="button" data-tab="gaps"    class="tab-btn">Reader outages</button>
                 </div>
             </div>
-            <div class="flex items-center gap-1 overflow-x-auto max-w-full">
-                <a href="/" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Live</a>
-                <a href="/reports" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white">Reports</a>
-                <a href="/savings" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Savings</a>
-                <a href="/fesco-bill" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">FESCO Bill</a>
-                <form method="post" action="{{ url_for('auth.logout') }}" class="inline shrink-0">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white transition-colors" title="Sign out">
-                        <i class="fas fa-right-from-bracket"></i>
-                    </button>
-                </form>
-            </div>
         </div>
-    </nav>
 
-    <!-- Header -->
-    <div class="max-w-6xl mx-auto px-4 py-6">
-        <h1 class="text-3xl font-bold text-white mb-1 flex items-center">
-            Reports
-            <span id="tab-status" class="tab-status" style="display:none"></span>
-        </h1>
-        <p class="text-blue-200 text-sm">Historical power and energy analytics</p>
-    </div>
-
-    <!-- Tabs -->
-    <div class="max-w-6xl mx-auto px-4 overflow-x-auto">
-        <div class="inline-flex rounded-lg overflow-hidden border border-white/20 bg-black/20 min-w-max" role="group">
-            <button data-tab="day"     class="tab-btn px-4 py-2 text-sm active transition-colors">Day</button>
-            <button data-tab="month"   class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Month</button>
-            <button data-tab="year"    class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Year</button>
-            <button data-tab="outages" class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Grid Outages</button>
-            <button data-tab="gaps"    class="tab-btn px-4 py-2 text-sm transition-colors border-l border-white/20">Reader Outages</button>
-        </div>
-    </div>
-
-    <!-- Panels -->
-    <div class="max-w-6xl mx-auto px-4 py-6">
-
-        <!-- DAY PANEL -->
-        <section data-panel="day" class="space-y-6">
-            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 flex flex-wrap items-center gap-3">
-                <label class="text-white/80 text-sm">Date</label>
-                <input type="date" id="day-date">
-                <button id="day-prev" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white"><i class="fas fa-chevron-left"></i></button>
-                <button id="day-next" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white"><i class="fas fa-chevron-right"></i></button>
-                <button id="day-today" class="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white">Today</button>
-                <div class="ml-auto relative">
-                    <button id="day-export-toggle" class="px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white inline-flex items-center gap-2">
-                        <i class="fas fa-download"></i> Export
-                    </button>
-                    <div id="day-export-menu" class="hidden absolute right-0 mt-1 w-56 bg-gray-900 border border-white/15 rounded-lg shadow-xl z-30 py-1">
-                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="csv" data-bucket="">Raw (~0.6 s) · CSV</button>
-                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="json" data-bucket="">Raw (~0.6 s) · JSON</button>
-                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="csv" data-bucket="60">1-min · CSV</button>
-                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="json" data-bucket="60">1-min · JSON</button>
-                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="csv" data-bucket="300">5-min · CSV</button>
-                        <button class="export-action w-full text-left px-3 py-2 text-sm text-white hover:bg-white/10" data-format="json" data-bucket="300">5-min · JSON</button>
+        <!-- DAY -->
+        <section data-panel="day" class="stack">
+            <div class="card toolbar">
+                <label for="day-date">Date</label>
+                <input type="date" id="day-date" class="input auto">
+                <div class="seg">
+                    <button type="button" id="day-prev" aria-label="Previous day"><i class="fas fa-chevron-left"></i></button>
+                    <button type="button" id="day-next" aria-label="Next day"><i class="fas fa-chevron-right"></i></button>
+                </div>
+                <button type="button" id="day-today" class="btn btn-sm btn-primary">Today</button>
+                <span class="spacer"></span>
+                <div class="menu-wrap">
+                    <button type="button" id="day-export-toggle" class="btn btn-sm"><i class="fas fa-download"></i> Export</button>
+                    <div id="day-export-menu" class="menu hidden">
+                        <button type="button" class="export-action" data-format="csv"  data-bucket="">Raw (~0.6 s) · CSV</button>
+                        <button type="button" class="export-action" data-format="json" data-bucket="">Raw (~0.6 s) · JSON</button>
+                        <div class="menu-sep"></div>
+                        <button type="button" class="export-action" data-format="csv"  data-bucket="60">1-min · CSV</button>
+                        <button type="button" class="export-action" data-format="json" data-bucket="60">1-min · JSON</button>
+                        <div class="menu-sep"></div>
+                        <button type="button" class="export-action" data-format="csv"  data-bucket="300">5-min · CSV</button>
+                        <button type="button" class="export-action" data-format="json" data-bucket="300">5-min · JSON</button>
                     </div>
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-yellow-300 text-xs">Solar</div>
-                    <div class="text-white text-xl font-bold"><span id="day-solar-kwh">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                    <div class="text-white/50 text-[10px] mt-1">Peak <span id="day-solar-peak">0</span>W</div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-blue-300 text-xs">Grid Import</div>
-                    <div class="text-white text-xl font-bold"><span id="day-grid-kwh">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                    <div class="text-white/50 text-[10px] mt-1">Peak <span id="day-grid-peak">0</span>W</div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-purple-300 text-xs">Load</div>
-                    <div class="text-white text-xl font-bold"><span id="day-load-kwh">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                    <div class="text-white/50 text-[10px] mt-1">Peak <span id="day-load-peak">0</span>W</div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-green-300 text-xs">Bat. Charge / Discharge</div>
-                    <div class="text-white text-base font-semibold"><span id="day-bat-charge">0</span> / <span id="day-bat-discharge">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                    <div class="text-white/50 text-[10px] mt-1">Peak <span id="day-bat-peak">0</span>W</div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-emerald-300 text-xs">Self-Sufficiency</div>
-                    <div class="text-white text-xl font-bold"><span id="day-selfsuff">0</span><span class="text-xs text-white/60 ml-1">%</span></div>
-                </div>
+            <div class="kpi-grid">
+                <div class="kpi" data-tone="solar"><div class="kpi-l">Solar</div><div class="kpi-v"><span id="day-solar-kwh">0</span><span class="u">kWh</span></div><div class="kpi-s">Peak <span id="day-solar-peak">0</span> W</div></div>
+                <div class="kpi" data-tone="grid"><div class="kpi-l">Grid import</div><div class="kpi-v"><span id="day-grid-kwh">0</span><span class="u">kWh</span></div><div class="kpi-s">Peak <span id="day-grid-peak">0</span> W</div></div>
+                <div class="kpi" data-tone="load"><div class="kpi-l">Load</div><div class="kpi-v"><span id="day-load-kwh">0</span><span class="u">kWh</span></div><div class="kpi-s">Peak <span id="day-load-peak">0</span> W</div></div>
+                <div class="kpi" data-tone="battery"><div class="kpi-l">Battery in / out</div><div class="kpi-v sm"><span id="day-bat-charge">0</span> / <span id="day-bat-discharge">0</span><span class="u">kWh</span></div><div class="kpi-s">Peak <span id="day-bat-peak">0</span> W</div></div>
+                <div class="kpi" data-tone="ok"><div class="kpi-l">Self-sufficiency</div><div class="kpi-v"><span id="day-selfsuff">0</span><span class="u">%</span></div><div class="kpi-s">Load met without the grid</div></div>
             </div>
 
-            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                <h2 class="text-white font-semibold mb-3">Power Timeline</h2>
-                <div class="relative" style="height: 380px;">
-                    <canvas id="day-chart"></canvas>
-                </div>
+            <div class="card">
+                <div class="card-h"><h2 class="card-title"><i class="fas fa-wave-square"></i>Power through the day</h2><div class="card-actions"><span class="chart-legend-hint">1-minute averages</span></div></div>
+                <div class="chart-box tall"><canvas id="day-chart"></canvas></div>
             </div>
         </section>
 
-        <!-- MONTH PANEL -->
-        <section data-panel="month" class="space-y-6 hidden">
-            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 flex flex-wrap items-center gap-3">
-                <label class="text-white/80 text-sm">Month</label>
-                <input type="month" id="month-input">
+        <!-- MONTH -->
+        <section data-panel="month" class="stack hidden">
+            <div class="card toolbar">
+                <label for="month-input">Month</label>
+                <input type="month" id="month-input" class="input auto">
             </div>
-
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-yellow-300 text-xs">Solar</div>
-                    <div class="text-white text-xl font-bold"><span id="mo-solar">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-blue-300 text-xs">Grid Import</div>
-                    <div class="text-white text-xl font-bold"><span id="mo-grid">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-purple-300 text-xs">Load</div>
-                    <div class="text-white text-xl font-bold"><span id="mo-load">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-green-300 text-xs">Bat. Charge / Discharge</div>
-                    <div class="text-white text-base font-semibold"><span id="mo-bat-charge">0</span> / <span id="mo-bat-discharge">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                </div>
+            <div class="kpi-grid">
+                <div class="kpi" data-tone="solar"><div class="kpi-l">Solar</div><div class="kpi-v"><span id="mo-solar">0</span><span class="u">kWh</span></div></div>
+                <div class="kpi" data-tone="grid"><div class="kpi-l">Grid import</div><div class="kpi-v"><span id="mo-grid">0</span><span class="u">kWh</span></div></div>
+                <div class="kpi" data-tone="load"><div class="kpi-l">Load</div><div class="kpi-v"><span id="mo-load">0</span><span class="u">kWh</span></div></div>
+                <div class="kpi" data-tone="battery"><div class="kpi-l">Battery in / out</div><div class="kpi-v sm"><span id="mo-bat-charge">0</span> / <span id="mo-bat-discharge">0</span><span class="u">kWh</span></div></div>
             </div>
-
-            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                <h2 class="text-white font-semibold mb-3">Daily Breakdown</h2>
-                <div class="relative" style="height: 380px;">
-                    <canvas id="month-chart"></canvas>
-                </div>
+            <div class="card">
+                <div class="card-h"><h2 class="card-title"><i class="fas fa-chart-column"></i>Daily breakdown</h2></div>
+                <div class="chart-box tall"><canvas id="month-chart"></canvas></div>
             </div>
         </section>
 
-        <!-- YEAR PANEL -->
-        <section data-panel="year" class="space-y-6 hidden">
-            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 flex flex-wrap items-center gap-3">
-                <label class="text-white/80 text-sm">Year</label>
-                <select id="year-input"></select>
+        <!-- YEAR -->
+        <section data-panel="year" class="stack hidden">
+            <div class="card toolbar">
+                <label for="year-input">Year</label>
+                <select id="year-input" class="input auto"></select>
             </div>
-
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-yellow-300 text-xs">Solar</div>
-                    <div class="text-white text-xl font-bold"><span id="yr-solar">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-blue-300 text-xs">Grid Import</div>
-                    <div class="text-white text-xl font-bold"><span id="yr-grid">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-purple-300 text-xs">Load</div>
-                    <div class="text-white text-xl font-bold"><span id="yr-load">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-green-300 text-xs">Bat. Charge / Discharge</div>
-                    <div class="text-white text-base font-semibold"><span id="yr-bat-charge">0</span> / <span id="yr-bat-discharge">0</span><span class="text-xs text-white/60 ml-1">kWh</span></div>
-                </div>
+            <div class="kpi-grid">
+                <div class="kpi" data-tone="solar"><div class="kpi-l">Solar</div><div class="kpi-v"><span id="yr-solar">0</span><span class="u">kWh</span></div></div>
+                <div class="kpi" data-tone="grid"><div class="kpi-l">Grid import</div><div class="kpi-v"><span id="yr-grid">0</span><span class="u">kWh</span></div></div>
+                <div class="kpi" data-tone="load"><div class="kpi-l">Load</div><div class="kpi-v"><span id="yr-load">0</span><span class="u">kWh</span></div></div>
+                <div class="kpi" data-tone="battery"><div class="kpi-l">Battery in / out</div><div class="kpi-v sm"><span id="yr-bat-charge">0</span> / <span id="yr-bat-discharge">0</span><span class="u">kWh</span></div></div>
             </div>
-
-            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                <h2 class="text-white font-semibold mb-3">Monthly Breakdown</h2>
-                <div class="relative" style="height: 380px;">
-                    <canvas id="year-chart"></canvas>
-                </div>
+            <div class="card">
+                <div class="card-h"><h2 class="card-title"><i class="fas fa-chart-column"></i>Monthly breakdown</h2></div>
+                <div class="chart-box tall"><canvas id="year-chart"></canvas></div>
             </div>
         </section>
 
-        <!-- OUTAGES PANEL -->
-        <section data-panel="outages" class="space-y-6 hidden">
-            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 flex flex-wrap items-center gap-3">
-                <label class="text-white/80 text-sm">From</label>
-                <input type="date" id="out-from">
-                <label class="text-white/80 text-sm">To</label>
-                <input type="date" id="out-to">
-                <button id="out-apply" class="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white">Apply</button>
-                <button data-days="7"  class="out-preset px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white">7d</button>
-                <button data-days="30" class="out-preset px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white">30d</button>
+        <!-- GRID OUTAGES -->
+        <section data-panel="outages" class="stack hidden">
+            <div class="card toolbar">
+                <label for="out-from">From</label>
+                <input type="date" id="out-from" class="input auto">
+                <label for="out-to">To</label>
+                <input type="date" id="out-to" class="input auto">
+                <button type="button" id="out-apply" class="btn btn-sm btn-primary">Apply</button>
+                <span class="spacer"></span>
+                <button type="button" data-days="7"  class="chip out-preset">7 days</button>
+                <button type="button" data-days="30" class="chip out-preset">30 days</button>
             </div>
-
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-red-300 text-xs">Outages</div>
-                    <div class="text-white text-2xl font-bold"><span id="out-count">0</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-orange-300 text-xs">Total Downtime</div>
-                    <div class="text-white text-2xl font-bold"><span id="out-total">0</span><span class="text-xs text-white/60 ml-1">h</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-emerald-300 text-xs">Grid Availability</div>
-                    <div class="text-white text-2xl font-bold"><span id="out-avail">100</span><span class="text-xs text-white/60 ml-1">%</span></div>
-                </div>
+            <div class="kpi-grid">
+                <div class="kpi" data-tone="danger"><div class="kpi-l">Grid outages</div><div class="kpi-v"><span id="out-count">0</span></div></div>
+                <div class="kpi" data-tone="warn"><div class="kpi-l">Total downtime</div><div class="kpi-v"><span id="out-total">0</span><span class="u">h</span></div></div>
+                <div class="kpi" data-tone="ok"><div class="kpi-l">Grid availability</div><div class="kpi-v"><span id="out-avail">100</span><span class="u">%</span></div></div>
             </div>
-
-            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                <h2 class="text-white font-semibold mb-3">Outage List</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-white/90">
-                        <thead class="text-white/60 text-xs uppercase border-b border-white/10">
-                            <tr>
-                                <th class="text-left py-2 px-2">Start</th>
-                                <th class="text-left py-2 px-2">End</th>
-                                <th class="text-right py-2 px-2">Duration</th>
-                            </tr>
-                        </thead>
-                        <tbody id="out-list">
-                            <tr><td colspan="3" class="text-center text-white/50 py-6">No outages</td></tr>
-                        </tbody>
+            <div class="card">
+                <div class="card-h"><h2 class="card-title"><i class="fas fa-plug-circle-xmark"></i>Outage list</h2></div>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead><tr><th>Start</th><th>End</th><th class="num">Duration</th></tr></thead>
+                        <tbody id="out-list"><tr><td colspan="3" class="empty">No outages</td></tr></tbody>
                     </table>
                 </div>
             </div>
         </section>
 
-        <!-- READER-GAP (DATA OUTAGE) PANEL -->
-        <section data-panel="gaps" class="space-y-6 hidden">
-            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 flex flex-wrap items-center gap-3">
-                <label class="text-white/80 text-sm">From</label>
-                <input type="date" id="gap-from">
-                <label class="text-white/80 text-sm">To</label>
-                <input type="date" id="gap-to">
-                <label class="text-white/80 text-sm ml-2">Min gap</label>
-                <select id="gap-threshold" class="bg-white/10 border border-white/20 rounded px-2 py-1 text-sm text-white">
+        <!-- READER OUTAGES -->
+        <section data-panel="gaps" class="stack hidden">
+            <div class="card toolbar">
+                <label for="gap-from">From</label>
+                <input type="date" id="gap-from" class="input auto">
+                <label for="gap-to">To</label>
+                <input type="date" id="gap-to" class="input auto">
+                <label for="gap-threshold">Min gap</label>
+                <select id="gap-threshold" class="input auto">
                     <option value="60">1 min</option>
                     <option value="120">2 min</option>
                     <option value="300">5 min</option>
                 </select>
-                <button id="gap-apply" class="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white">Apply</button>
-                <button data-days="1"  class="gap-preset px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white">24h</button>
-                <button data-days="7"  class="gap-preset px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white">7d</button>
-                <button data-days="30" class="gap-preset px-3 py-1.5 text-sm rounded-lg bg-white/10 hover:bg-white/20 text-white">30d</button>
+                <button type="button" id="gap-apply" class="btn btn-sm btn-primary">Apply</button>
+                <span class="spacer"></span>
+                <button type="button" data-days="1"  class="chip gap-preset">24 h</button>
+                <button type="button" data-days="7"  class="chip gap-preset">7 days</button>
+                <button type="button" data-days="30" class="chip gap-preset">30 days</button>
             </div>
-
-            <div class="bg-white/5 border border-white/10 rounded-lg p-3 text-xs text-white/60">
-                <i class="fas fa-circle-info mr-1"></i>
-                A <strong class="text-white/80">reader outage</strong> is a period where the monitor
-                stopped producing readings (service down, USB disconnect, Pi reboot, or the
-                monitoring host lost power). This is different from the grid outages above — those
-                track when the grid itself was unavailable based on grid voltage.
+            <div class="banner banner-info">
+                <i class="fas fa-circle-info"></i>
+                <div class="banner-sub" style="margin-top:0">A <b>reader outage</b> is a period where the monitor itself stopped producing readings: service down, USB unplugged, Pi reboot or the monitoring host losing power. Grid outages, on the other tab, are periods where the grid voltage itself was gone.</div>
             </div>
-
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-red-300 text-xs">Reader Outages</div>
-                    <div class="text-white text-2xl font-bold"><span id="gap-count">0</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-orange-300 text-xs">Total Downtime</div>
-                    <div class="text-white text-2xl font-bold"><span id="gap-total">0</span><span class="text-xs text-white/60 ml-1">h</span></div>
-                </div>
-                <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-                    <div class="text-emerald-300 text-xs">Uptime</div>
-                    <div class="text-white text-2xl font-bold"><span id="gap-avail">100</span><span class="text-xs text-white/60 ml-1">%</span></div>
-                </div>
+            <div class="kpi-grid">
+                <div class="kpi" data-tone="danger"><div class="kpi-l">Reader outages</div><div class="kpi-v"><span id="gap-count">0</span></div></div>
+                <div class="kpi" data-tone="warn"><div class="kpi-l">Total downtime</div><div class="kpi-v"><span id="gap-total">0</span><span class="u">h</span></div></div>
+                <div class="kpi" data-tone="ok"><div class="kpi-l">Monitor uptime</div><div class="kpi-v"><span id="gap-avail">100</span><span class="u">%</span></div></div>
             </div>
-
-            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6">
-                <h2 class="text-white font-semibold mb-3">Gap List</h2>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-white/90">
-                        <thead class="text-white/60 text-xs uppercase border-b border-white/10">
-                            <tr>
-                                <th class="text-left py-2 px-2">Start</th>
-                                <th class="text-left py-2 px-2">End</th>
-                                <th class="text-right py-2 px-2">Duration</th>
-                            </tr>
-                        </thead>
-                        <tbody id="gap-list">
-                            <tr><td colspan="3" class="text-center text-white/50 py-6">No reader outages</td></tr>
-                        </tbody>
+            <div class="card">
+                <div class="card-h"><h2 class="card-title"><i class="fas fa-satellite-dish"></i>Gap list</h2></div>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead><tr><th>Start</th><th>End</th><th class="num">Duration</th></tr></thead>
+                        <tbody id="gap-list"><tr><td colspan="3" class="empty">No reader outages</td></tr></tbody>
                     </table>
                 </div>
             </div>
         </section>
-    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <footer class="foot">
+            <span>Inverter Monitor</span>
+            <span class="mono">build {{ app_version }}</span>
+        </footer>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/ui.js') }}?v={{ app_version }}"></script>
     <script>
     (function () {
-        const palette = {
-            solar: { border: '#FCD34D', fill: 'rgba(252, 211, 77, 0.25)' },
-            grid:  { border: '#60A5FA', fill: 'rgba(96, 165, 250, 0.25)' },
-            load:  { border: '#A78BFA', fill: 'rgba(167, 139, 250, 0.25)' },
-            battery: { border: '#34D399', fill: 'rgba(52, 211, 153, 0.25)' },
-        };
+        const pal = () => UI.palette();
 
-        function isoDate(d) { return d.toISOString().slice(0, 10); }
+        // Local calendar dates (toISOString would flip the day at 05:00 in Pakistan).
+        const pad = (n) => String(n).padStart(2, '0');
+        function isoDate(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+        function parseLocal(s) { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d); }
         function todayStr() { return isoDate(new Date()); }
-        function monthStr(d) { return d.toISOString().slice(0, 7); }
+        function monthStr(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
 
-        // Simple shared status pill + panel dim for the active tab.
+        // Shared status pill + panel dim for the active tab.
         const statusEl = document.getElementById('tab-status');
+        let statusTimer = null;
         function showStatus(kind, text, timeout) {
             if (!statusEl) return;
+            clearTimeout(statusTimer);
             statusEl.className = `tab-status ${kind}`;
             statusEl.innerHTML = (kind === 'loading'
                 ? '<i class="fas fa-circle-notch fa-spin"></i>'
                 : kind === 'error' ? '<i class="fas fa-triangle-exclamation"></i>'
                 : '<i class="fas fa-circle-info"></i>') + `<span>${text}</span>`;
             statusEl.style.display = '';
-            if (timeout) setTimeout(() => { if (statusEl.classList.contains(kind)) statusEl.style.display = 'none'; }, timeout);
+            if (timeout) statusTimer = setTimeout(() => { if (statusEl.classList.contains(kind)) statusEl.style.display = 'none'; }, timeout);
         }
         function hideStatus() { if (statusEl) statusEl.style.display = 'none'; }
         function activePanel() { return document.querySelector('[data-panel]:not(.hidden)'); }
+        let retry = null;
+        if (statusEl) statusEl.addEventListener('click', () => { if (statusEl.classList.contains('error') && retry) retry(); });
         async function withStatus(loadingText, fn) {
             showStatus('loading', loadingText);
-            // Capture panel at entry so a tab switch mid-load doesn't leave
-            // the previous panel stuck in the dimmed state.
             const panel = activePanel();
             if (panel) panel.classList.add('panel-loading');
             try {
@@ -371,7 +219,7 @@
                 return result;
             } catch (err) {
                 console.error(err);
-                showStatus('error', 'Failed to load · tap to retry', 5000);
+                showStatus('error', 'Failed to load · tap to retry', 8000);
                 throw err;
             } finally {
                 if (panel) panel.classList.remove('panel-loading');
@@ -386,9 +234,11 @@
             const mm = m % 60;
             return mm ? `${h}h ${mm}m` : `${h}h`;
         }
-        function fmtTime(ts) { return new Date(ts * 1000).toLocaleString(); }
+        function fmtTime(ts) { return new Date(ts * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); }
+        const rowHTML = (start, end, dur) => `<tr><td>${fmtTime(start)}</td><td>${fmtTime(end)}</td><td class="num">${fmtDuration(dur)}</td></tr>`;
+        const emptyHTML = (text) => `<tr><td colspan="3" class="empty">${text}</td></tr>`;
 
-        // Tab switching
+        // Tabs
         const tabButtons = document.querySelectorAll('.tab-btn');
         const panels = document.querySelectorAll('[data-panel]');
         tabButtons.forEach((btn) => {
@@ -405,50 +255,54 @@
             });
         });
 
-        // ============ DAY TAB ============
-        const dayChart = new Chart(document.getElementById('day-chart'), {
-            type: 'line',
-            data: {
-                datasets: [
-                    { label: 'Solar',   data: [], borderColor: palette.solar.border,   fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25 },
-                    { label: 'Grid',    data: [], borderColor: palette.grid.border,    fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25 },
-                    { label: 'Load',    data: [], borderColor: palette.load.border,    fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25 },
-                    { label: 'Battery', data: [], borderColor: palette.battery.border, fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25, borderDash: [6, 4] },
-                ],
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false, animation: false, parsing: false, spanGaps: false,
-                interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        // Common chart options that follow the theme.
+        function baseOptions(extra) {
+            const t = UI.chartTheme();
+            return {
+                responsive: true, maintainAspectRatio: false,
                 plugins: {
-                    legend: { labels: { color: '#E5E7EB' } },
-                    tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.92)',
-                        titleColor: '#fff',
-                        bodyColor: '#fff',
-                        borderColor: 'rgba(255,255,255,0.15)',
-                        borderWidth: 1,
-                        callbacks: {
-                            title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleTimeString() : '',
-                            label: (c) => `${c.dataset.label}: ${Math.round(c.parsed.y)} W`,
-                        },
-                    },
+                    legend: { labels: t.legend },
+                    tooltip: { ...t.tooltip, ...(extra.tooltip || {}) },
                 },
                 scales: {
-                    x: {
-                        type: 'linear',
-                        ticks: {
-                            color: '#CBD5E1', maxRotation: 0, autoSkip: true, maxTicksLimit: 10,
-                            callback: (v) => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        },
-                        grid: { color: 'rgba(255,255,255,0.08)' },
-                    },
-                    y: { ticks: { color: '#CBD5E1', callback: (v) => `${v} W` }, grid: { color: 'rgba(255,255,255,0.08)' }, beginAtZero: true },
+                    x: { ...(extra.x || {}), ticks: { color: t.tick, ...((extra.x || {}).ticks || {}) }, grid: { color: t.grid }, border: { color: t.border } },
+                    y: { ticks: { color: t.tick, callback: extra.yTick }, grid: { color: t.grid }, border: { color: t.border }, beginAtZero: true },
                 },
+            };
+        }
+        function retheme(chart, isLine) {
+            const p = pal();
+            const t = UI.chartTheme();
+            const keys = ['solar', 'grid', 'load', 'battery'];
+            chart.data.datasets.forEach((ds, i) => { if (isLine) ds.borderColor = p[keys[i]]; else ds.backgroundColor = p[keys[i]]; });
+            chart.options.plugins.legend.labels.color = t.legend.color;
+            Object.assign(chart.options.plugins.tooltip, t.tooltip);
+            ['x', 'y'].forEach((k) => { chart.options.scales[k].ticks.color = t.tick; chart.options.scales[k].grid.color = t.grid; chart.options.scales[k].border.color = t.border; });
+            chart.update('none');
+        }
+
+        // ============ DAY ============
+        const p0 = pal();
+        const dayChart = new Chart(document.getElementById('day-chart'), {
+            type: 'line',
+            data: { datasets: [
+                { label: 'Solar',   data: [], borderColor: p0.solar,   fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25 },
+                { label: 'Grid',    data: [], borderColor: p0.grid,    fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25 },
+                { label: 'Load',    data: [], borderColor: p0.load,    fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25 },
+                { label: 'Battery', data: [], borderColor: p0.battery, fill: false, tension: 0.3, pointRadius: 0, borderWidth: 2.25, borderDash: [6, 4] },
+            ] },
+            options: {
+                ...baseOptions({
+                    yTick: (v) => `${v} W`,
+                    tooltip: { callbacks: { title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleTimeString() : '', label: (c) => `${c.dataset.label}: ${Math.round(c.parsed.y)} W` } },
+                    x: { type: 'linear', ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10, callback: (v) => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } },
+                }),
+                animation: false, parsing: false, spanGaps: false,
+                interaction: { mode: 'nearest', axis: 'x', intersect: false },
             },
         });
 
-        // Insert { x, y: null } entries where two consecutive points are farther apart than
-        // `gapMs`, so Chart.js breaks the line (e.g. across a restart/outage).
+        // Insert { x, y: null } where two points are farther apart than gapMs so the line breaks.
         function withGaps(series, gapMs) {
             if (series.length < 2) return series;
             const out = [];
@@ -465,6 +319,7 @@
         async function loadDay(date) {
             if (!date) date = todayStr();
             document.getElementById('day-date').value = date;
+            retry = () => loadDay(date);
             await withStatus('Loading day…', async () => {
                 const [summaryRes, readingsRes] = await Promise.all([
                     fetch(`/summary?date=${date}`),
@@ -480,18 +335,16 @@
                 document.getElementById('day-bat-charge').textContent = (s.battery_charge_kwh || 0).toFixed(2);
                 document.getElementById('day-bat-discharge').textContent = (s.battery_discharge_kwh || 0).toFixed(2);
                 document.getElementById('day-selfsuff').textContent = Math.round((s.self_sufficiency || 0) * 100);
-
-                const points = r.points || [];
-                const bucketMs = ((r && r.bucket_seconds) || 60) * 1000;
-                const gapMs = Math.max(120000, bucketMs * 3);
-                // True instantaneous peaks come from daily_stats.*_max via /summary (s.*_peak_w).
-                // The /day-readings points are 60s time-AVERAGES, so reducing over them under-reports
-                // real spikes — they're only used for the chart series below.
+                // Instantaneous peaks come from daily_stats via /summary; the chart points are
+                // 60 s averages and would under-report spikes.
                 document.getElementById('day-solar-peak').textContent = Math.round(s.solar_peak_w || 0);
                 document.getElementById('day-grid-peak').textContent = Math.round(s.grid_peak_w || 0);
                 document.getElementById('day-load-peak').textContent = Math.round(s.load_peak_w || 0);
                 document.getElementById('day-bat-peak').textContent = Math.round(s.battery_peak_w || 0);
 
+                const points = r.points || [];
+                const bucketMs = ((r && r.bucket_seconds) || 60) * 1000;
+                const gapMs = Math.max(120000, bucketMs * 3);
                 const toSeries = (key) => withGaps(points.map((p) => ({ x: p.timestamp * 1000, y: p[key] })), gapMs);
                 dayChart.data.datasets[0].data = toSeries('solar_power');
                 dayChart.data.datasets[1].data = toSeries('grid_power');
@@ -505,34 +358,23 @@
 
         document.getElementById('day-date').addEventListener('change', (e) => loadDay(e.target.value));
         document.getElementById('day-today').addEventListener('click', () => loadDay(todayStr()));
-        document.getElementById('day-prev').addEventListener('click', () => {
-            const d = new Date(document.getElementById('day-date').value); d.setDate(d.getDate() - 1); loadDay(isoDate(d));
-        });
-        document.getElementById('day-next').addEventListener('click', () => {
-            const d = new Date(document.getElementById('day-date').value); d.setDate(d.getDate() + 1); loadDay(isoDate(d));
-        });
+        document.getElementById('day-prev').addEventListener('click', () => { const d = parseLocal(document.getElementById('day-date').value); d.setDate(d.getDate() - 1); loadDay(isoDate(d)); });
+        document.getElementById('day-next').addEventListener('click', () => { const d = parseLocal(document.getElementById('day-date').value); d.setDate(d.getDate() + 1); loadDay(isoDate(d)); });
 
-        // Export menu (Day tab) — toggles a dropdown that triggers a download.
+        // Export menu (Day tab)
         (function () {
             const toggle = document.getElementById('day-export-toggle');
             const menu = document.getElementById('day-export-menu');
             if (!toggle || !menu) return;
-            toggle.addEventListener('click', (e) => {
-                e.stopPropagation();
-                menu.classList.toggle('hidden');
-            });
-            document.addEventListener('click', (e) => {
-                if (!menu.contains(e.target) && e.target !== toggle) menu.classList.add('hidden');
-            });
+            toggle.addEventListener('click', (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); });
+            document.addEventListener('click', (e) => { if (!menu.contains(e.target) && e.target !== toggle) menu.classList.add('hidden'); });
             menu.querySelectorAll('.export-action').forEach((btn) => {
                 btn.addEventListener('click', () => {
                     const date = document.getElementById('day-date').value || todayStr();
-                    const fmt = btn.dataset.format || 'csv';
-                    const bucket = btn.dataset.bucket || '';
-                    const params = new URLSearchParams({ from: date, to: date, format: fmt });
-                    if (bucket) params.set('bucket', bucket);
-                    // Trigger a real download. Through the AWS relay there is no HTTP route for
-                    // exports, so relay.js provides relayDownload() which fetches over the tunnel.
+                    const params = new URLSearchParams({ from: date, to: date, format: btn.dataset.format || 'csv' });
+                    if (btn.dataset.bucket) params.set('bucket', btn.dataset.bucket);
+                    // Through the AWS relay there is no HTTP route for exports; relay.js provides
+                    // relayDownload() which fetches over the tunnel and saves the file.
                     const exportUrl = `/export-readings?${params.toString()}`;
                     if (window.relayDownload) window.relayDownload(exportUrl);
                     else window.location.href = exportUrl;
@@ -541,36 +383,26 @@
             });
         })();
 
-        // ============ MONTH TAB ============
+        // ============ MONTH ============
+        const barOpts = () => ({
+            ...baseOptions({ yTick: (v) => `${v} kWh`, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y} kWh` } } }),
+            borderRadius: 4,
+        });
         const monthChart = new Chart(document.getElementById('month-chart'), {
             type: 'bar',
             data: { labels: [], datasets: [
-                { label: 'Solar',   data: [], backgroundColor: palette.solar.border },
-                { label: 'Grid',    data: [], backgroundColor: palette.grid.border },
-                { label: 'Load',    data: [], backgroundColor: palette.load.border },
-                { label: 'Battery', data: [], backgroundColor: palette.battery.border },
+                { label: 'Solar',   data: [], backgroundColor: p0.solar },
+                { label: 'Grid',    data: [], backgroundColor: p0.grid },
+                { label: 'Load',    data: [], backgroundColor: p0.load },
+                { label: 'Battery', data: [], backgroundColor: p0.battery },
             ] },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { labels: { color: '#E5E7EB' } },
-                    tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.92)',
-                        titleColor: '#fff', bodyColor: '#fff',
-                        borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1,
-                        callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y} kWh` },
-                    },
-                },
-                scales: {
-                    x: { ticks: { color: '#CBD5E1' }, grid: { color: 'rgba(255,255,255,0.08)' } },
-                    y: { ticks: { color: '#CBD5E1', callback: (v) => `${v} kWh` }, grid: { color: 'rgba(255,255,255,0.08)' }, beginAtZero: true },
-                },
-            },
+            options: barOpts(),
         });
 
         async function loadMonth(monthVal) {
             if (!monthVal) monthVal = monthStr(new Date());
             document.getElementById('month-input').value = monthVal;
+            retry = () => loadMonth(monthVal);
             await withStatus('Loading month…', async () => {
                 const [monthRes, historyRes] = await Promise.all([
                     fetch(`/stats?period=month&month=${monthVal}`),
@@ -579,57 +411,39 @@
                 if (!monthRes.ok || !historyRes.ok) throw new Error('Request failed');
                 const m = await monthRes.json();
                 const hist = await historyRes.json();
-
                 const rows = hist.filter((r) => r.date.startsWith(monthVal));
                 document.getElementById('mo-solar').textContent = ((m.solar_energy || 0) / 1000).toFixed(2);
                 document.getElementById('mo-grid').textContent  = ((m.grid_energy  || 0) / 1000).toFixed(2);
                 document.getElementById('mo-load').textContent  = ((m.load_energy  || 0) / 1000).toFixed(2);
                 document.getElementById('mo-bat-charge').textContent = ((m.battery_charge_energy || 0) / 1000).toFixed(2);
                 document.getElementById('mo-bat-discharge').textContent = ((m.battery_discharge_energy || 0) / 1000).toFixed(2);
-
                 monthChart.data.labels = rows.map((r) => r.date.slice(8, 10));
                 monthChart.data.datasets[0].data = rows.map((r) => r.solar_energy);
                 monthChart.data.datasets[1].data = rows.map((r) => r.grid_energy);
                 monthChart.data.datasets[2].data = rows.map((r) => r.load_energy);
                 monthChart.data.datasets[3].data = rows.map((r) => r.battery_charge_energy || 0);
                 monthChart.update();
-
                 if (rows.length === 0) showStatus('empty', 'No data for this month', 4000);
             }).catch(() => {});
         }
-
         document.getElementById('month-input').addEventListener('change', (e) => loadMonth(e.target.value));
 
-        // ============ YEAR TAB ============
+        // ============ YEAR ============
         const yearChart = new Chart(document.getElementById('year-chart'), {
             type: 'bar',
             data: { labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], datasets: [
-                { label: 'Solar',   data: Array(12).fill(0), backgroundColor: palette.solar.border },
-                { label: 'Grid',    data: Array(12).fill(0), backgroundColor: palette.grid.border },
-                { label: 'Load',    data: Array(12).fill(0), backgroundColor: palette.load.border },
-                { label: 'Battery', data: Array(12).fill(0), backgroundColor: palette.battery.border },
+                { label: 'Solar',   data: Array(12).fill(0), backgroundColor: p0.solar },
+                { label: 'Grid',    data: Array(12).fill(0), backgroundColor: p0.grid },
+                { label: 'Load',    data: Array(12).fill(0), backgroundColor: p0.load },
+                { label: 'Battery', data: Array(12).fill(0), backgroundColor: p0.battery },
             ] },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { labels: { color: '#E5E7EB' } },
-                    tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.92)',
-                        titleColor: '#fff', bodyColor: '#fff',
-                        borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1,
-                        callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y} kWh` },
-                    },
-                },
-                scales: {
-                    x: { ticks: { color: '#CBD5E1' }, grid: { color: 'rgba(255,255,255,0.08)' } },
-                    y: { ticks: { color: '#CBD5E1', callback: (v) => `${v} kWh` }, grid: { color: 'rgba(255,255,255,0.08)' }, beginAtZero: true },
-                },
-            },
+            options: barOpts(),
         });
 
         async function loadYear(yearVal) {
             const year = yearVal || String(new Date().getFullYear());
             document.getElementById('year-input').value = year;
+            retry = () => loadYear(year);
             await withStatus('Loading year…', async () => {
                 const [yearRes, historyRes] = await Promise.all([
                     fetch(`/stats?period=year&year=${year}`),
@@ -638,13 +452,11 @@
                 if (!yearRes.ok || !historyRes.ok) throw new Error('Request failed');
                 const y = await yearRes.json();
                 const hist = await historyRes.json();
-
                 document.getElementById('yr-solar').textContent = ((y.solar_energy || 0) / 1000).toFixed(2);
                 document.getElementById('yr-grid').textContent  = ((y.grid_energy  || 0) / 1000).toFixed(2);
                 document.getElementById('yr-load').textContent  = ((y.load_energy  || 0) / 1000).toFixed(2);
                 document.getElementById('yr-bat-charge').textContent = ((y.battery_charge_energy || 0) / 1000).toFixed(2);
                 document.getElementById('yr-bat-discharge').textContent = ((y.battery_discharge_energy || 0) / 1000).toFixed(2);
-
                 const monthlyTotals = Array.from({ length: 12 }, () => ({ solar: 0, grid: 0, load: 0, battery: 0 }));
                 const yearRows = hist.filter((r) => r.date.startsWith(year));
                 yearRows.forEach((r) => {
@@ -659,17 +471,18 @@
                 yearChart.data.datasets[2].data = monthlyTotals.map((x) => +x.load.toFixed(2));
                 yearChart.data.datasets[3].data = monthlyTotals.map((x) => +x.battery.toFixed(2));
                 yearChart.update();
-
                 if (yearRows.length === 0) showStatus('empty', 'No data for this year', 4000);
             }).catch(() => {});
         }
-
         document.getElementById('year-input').addEventListener('change', (e) => loadYear(e.target.value));
 
-        // ============ OUTAGES TAB ============
+        UI.onTheme(() => { retheme(dayChart, true); retheme(monthChart, false); retheme(yearChart, false); });
+
+        // ============ GRID OUTAGES ============
         async function loadOutages() {
             const from = document.getElementById('out-from').value;
             const to = document.getElementById('out-to').value;
+            retry = loadOutages;
             await withStatus('Loading outages…', async () => {
                 const res = await fetch(`/outages?from=${from}&to=${to}`);
                 if (!res.ok) throw new Error('Request failed');
@@ -677,48 +490,36 @@
                 document.getElementById('out-count').textContent = data.count || 0;
                 document.getElementById('out-total').textContent = ((data.total_down_seconds || 0) / 3600).toFixed(2);
                 document.getElementById('out-avail').textContent = ((data.availability || 0) * 100).toFixed(2);
-
                 const list = document.getElementById('out-list');
                 if (!data.outages || data.outages.length === 0) {
-                    list.innerHTML = '<tr><td colspan="3" class="text-center text-white/50 py-6">No outages in this range</td></tr>';
+                    list.innerHTML = emptyHTML('No grid outages in this range');
                     showStatus('empty', 'No outages found', 4000);
                     return;
                 }
-                list.innerHTML = data.outages.map((o) => `
-                    <tr class="border-b border-white/5">
-                        <td class="py-2 px-2">${fmtTime(o.start)}</td>
-                        <td class="py-2 px-2">${fmtTime(o.end)}</td>
-                        <td class="py-2 px-2 text-right">${fmtDuration(o.duration_seconds)}</td>
-                    </tr>
-                `).join('');
+                list.innerHTML = data.outages.map((o) => rowHTML(o.start, o.end, o.duration_seconds)).join('');
             }).catch(() => {});
         }
-
         function setOutRange(days) {
             const to = new Date();
             const from = new Date();
             from.setDate(from.getDate() - days + 1);
             document.getElementById('out-from').value = isoDate(from);
             document.getElementById('out-to').value = isoDate(to);
-            document.querySelectorAll('.out-preset').forEach((b) => {
-                b.classList.toggle('active', Number(b.dataset.days) === days);
-            });
+            document.querySelectorAll('.out-preset').forEach((b) => b.classList.toggle('active', Number(b.dataset.days) === days));
             loadOutages();
         }
         document.getElementById('out-apply').addEventListener('click', () => {
-            // A custom date range invalidates the preset selection.
             document.querySelectorAll('.out-preset').forEach((b) => b.classList.remove('active'));
             loadOutages();
         });
-        document.querySelectorAll('.out-preset').forEach((b) => {
-            b.addEventListener('click', () => setOutRange(Number(b.dataset.days)));
-        });
+        document.querySelectorAll('.out-preset').forEach((b) => b.addEventListener('click', () => setOutRange(Number(b.dataset.days))));
 
-        // ============ READER OUTAGES (DATA GAPS) TAB ============
+        // ============ READER OUTAGES ============
         async function loadGaps() {
             const from = document.getElementById('gap-from').value;
             const to = document.getElementById('gap-to').value;
             const threshold = document.getElementById('gap-threshold').value || '60';
+            retry = loadGaps;
             await withStatus('Loading reader outages…', async () => {
                 const res = await fetch(`/data-gaps?from=${from}&to=${to}&threshold=${threshold}`);
                 if (!res.ok) throw new Error('Request failed');
@@ -726,32 +527,22 @@
                 document.getElementById('gap-count').textContent = data.count || 0;
                 document.getElementById('gap-total').textContent = ((data.total_down_seconds || 0) / 3600).toFixed(2);
                 document.getElementById('gap-avail').textContent = ((data.availability || 0) * 100).toFixed(2);
-
                 const list = document.getElementById('gap-list');
                 if (!data.gaps || data.gaps.length === 0) {
-                    list.innerHTML = '<tr><td colspan="3" class="text-center text-white/50 py-6">No reader outages in this range</td></tr>';
+                    list.innerHTML = emptyHTML('No reader outages in this range');
                     showStatus('empty', 'No reader outages found', 4000);
                     return;
                 }
-                list.innerHTML = data.gaps.map((g) => `
-                    <tr class="border-b border-white/5">
-                        <td class="py-2 px-2">${fmtTime(g.start)}</td>
-                        <td class="py-2 px-2">${fmtTime(g.end)}</td>
-                        <td class="py-2 px-2 text-right">${fmtDuration(g.duration_seconds)}</td>
-                    </tr>
-                `).join('');
+                list.innerHTML = data.gaps.map((g) => rowHTML(g.start, g.end, g.duration_seconds)).join('');
             }).catch(() => {});
         }
-
         function setGapRange(days) {
             const to = new Date();
             const from = new Date();
             from.setDate(from.getDate() - days + 1);
             document.getElementById('gap-from').value = isoDate(from);
             document.getElementById('gap-to').value = isoDate(to);
-            document.querySelectorAll('.gap-preset').forEach((b) => {
-                b.classList.toggle('active', Number(b.dataset.days) === days);
-            });
+            document.querySelectorAll('.gap-preset').forEach((b) => b.classList.toggle('active', Number(b.dataset.days) === days));
             loadGaps();
         }
         document.getElementById('gap-apply').addEventListener('click', () => {
@@ -759,12 +550,9 @@
             loadGaps();
         });
         document.getElementById('gap-threshold').addEventListener('change', () => loadGaps());
-        document.querySelectorAll('.gap-preset').forEach((b) => {
-            b.addEventListener('click', () => setGapRange(Number(b.dataset.days)));
-        });
+        document.querySelectorAll('.gap-preset').forEach((b) => b.addEventListener('click', () => setGapRange(Number(b.dataset.days))));
 
-        // Default the Reader Outages date inputs to the last 7 days, but don't load
-        // until the tab is actually opened (saves a query on first Reports render).
+        // Default the reader-outage inputs to the last 7 days; load only when the tab opens.
         (function initGapDefaults() {
             const to = new Date();
             const from = new Date();
@@ -776,7 +564,6 @@
         })();
 
         // ============ INIT ============
-        // Populate year selector
         const nowYear = new Date().getFullYear();
         const yearSelect = document.getElementById('year-input');
         for (let y = nowYear; y >= nowYear - 4; y--) {
@@ -784,7 +571,6 @@
             opt.value = String(y); opt.textContent = String(y);
             yearSelect.appendChild(opt);
         }
-
         document.getElementById('day-date').value = todayStr();
         document.getElementById('month-input').value = monthStr(new Date());
         setOutRange(7);

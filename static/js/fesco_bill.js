@@ -1,7 +1,7 @@
 /* FESCO Bill page — fetches /fesco/* and renders into the template's slots.
 
    No frameworks; vanilla DOM. CSRF token read from <meta name="csrf-token">.
-   Reused for: cycle picker, edit modal, bootstrap form, banner dismissal. */
+   Handles: cycle picker, meter-reading editor, bootstrap form. */
 
 (function () {
   'use strict';
@@ -11,10 +11,11 @@
   const fmtPkr = (n) => (n == null) ? '—' :
     new Intl.NumberFormat('en-PK', { maximumFractionDigits: 2 }).format(n);
   const fmtKwh = (n) => (n == null) ? '—' : Number(n).toFixed(0);
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const fmtDate = (iso) => {
     if (!iso) return '—';
     const [y, m, d] = iso.split('-');
-    return `${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m, 10) - 1]} ${y}`;
+    return `${d} ${MONTHS[parseInt(m, 10) - 1]} ${y}`;
   };
 
   async function fetchJSON(url, options = {}) {
@@ -32,31 +33,29 @@
   function buildBootstrapRows() {
     const container = $('bootstrap-rows');
     container.innerHTML = '';
-    const months = lastNMonthLabels(12);
-    months.forEach((label) => {
+    lastNMonthLabels(12).forEach((label) => {
       const row = document.createElement('div');
-      row.className = 'grid grid-cols-12 gap-2';
+      row.className = 'boot-row';
       row.innerHTML = `
-        <input type="text" value="${label}" data-field="label" class="col-span-3 bg-white/10 border border-white/20 text-white rounded px-2 py-1.5 text-sm" readonly>
-        <input type="number" min="0" step="1" data-field="units" class="col-span-3 bg-white/10 border border-white/20 text-white rounded px-2 py-1.5 text-sm" placeholder="kWh">
-        <input type="number" step="0.01" data-field="bill" class="col-span-3 bg-white/10 border border-white/20 text-white rounded px-2 py-1.5 text-sm" placeholder="PKR">
-        <input type="number" step="0.01" data-field="paid" class="col-span-3 bg-white/10 border border-white/20 text-white rounded px-2 py-1.5 text-sm" placeholder="PKR">
+        <input type="text" value="${label}" data-field="label" class="input sm" readonly>
+        <input type="number" min="0" step="1" data-field="units" class="input sm num" placeholder="kWh">
+        <input type="number" step="0.01" data-field="bill" class="input sm num" placeholder="PKR">
+        <input type="number" step="0.01" data-field="paid" class="input sm num" placeholder="PKR">
       `;
       container.appendChild(row);
     });
   }
 
   function lastNMonthLabels(n) {
-    const ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const today = new Date();
     const labels = [];
     // Most-recent CLOSED cycle is the prior calendar month.
     let y = today.getFullYear();
-    let m = today.getMonth(); // 0-based; -1 = previous month
+    let m = today.getMonth();
     for (let i = 0; i < n; i++) {
       m = m - 1;
       if (m < 0) { m = 11; y -= 1; }
-      labels.unshift(`${ABBR[m]}${String(y).slice(-2)}`);
+      labels.unshift(`${MONTHS[m]}${String(y).slice(-2)}`);
     }
     return labels;
   }
@@ -82,28 +81,25 @@
       alert('Enter at least one row.');
       return;
     }
-    await fetchJSON('/fesco/bootstrap', {
-      method: 'POST',
-      body: JSON.stringify({ rows }),
-    });
+    await fetchJSON('/fesco/bootstrap', { method: 'POST', body: JSON.stringify({ rows }) });
     location.reload();
   }
 
   // -------------------------- Bill rendering --------------------------
 
+  const kv = (k, v) => `<div class="kv"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+
   function renderHeader(payload) {
     const h = payload.header;
-    $('header-strip').innerHTML = `
-      <div><div class="text-white/50 text-xs">Consumer ID</div><div class="text-white">${h.consumer_id || '—'}</div></div>
-      <div><div class="text-white/50 text-xs">Tariff</div><div class="text-white">${h.tariff_code || '—'}</div></div>
-      <div><div class="text-white/50 text-xs">Load</div><div class="text-white">${h.load_kw || '—'} kW</div></div>
-      <div><div class="text-white/50 text-xs">Meter</div><div class="text-white">${h.meter_no || '—'}</div></div>
-      <div><div class="text-white/50 text-xs">Reading date</div><div class="text-white">${fmtDate(h.reading_date)}</div></div>
-      <div><div class="text-white/50 text-xs">Due date</div><div class="text-white">${fmtDate(h.due_date)}</div></div>
-      <div class="col-span-2 md:col-span-4 text-xs text-white/40">
-        Connection: ${fmtDate(h.connection_date)} · ${h.discom_name || 'FESCO'}
-      </div>
-    `;
+    $('header-strip').innerHTML = [
+      kv('Consumer ID', h.consumer_id || '—'),
+      kv('Tariff', h.tariff_code || '—'),
+      kv('Sanctioned load', h.load_kw ? `${h.load_kw} kW` : '—'),
+      kv('Meter', h.meter_no || '—'),
+      kv('Reading date', fmtDate(h.reading_date)),
+      kv('Due date', fmtDate(h.due_date)),
+      `<div class="kv-note">Connected ${fmtDate(h.connection_date)} · ${h.discom_name || 'FESCO'}</div>`,
+    ].join('');
   }
 
   function renderStatusBanner(payload) {
@@ -111,18 +107,18 @@
     const isOpen = cycle.status === 'open';
     const isActual = !isOpen && cycle.units_actual != null;
     const status = payload.status || {};
-    let badgeBg = isActual ? 'bg-emerald-500/20 border-emerald-500/40' : 'bg-amber-500/20 border-amber-500/40';
-    let badgeIcon = isActual ? 'fa-check-circle text-emerald-300' : 'fa-bolt text-amber-300';
-    let badgeLabel = isActual ? 'ACTUAL' : 'ESTIMATED';
+    const tone = isActual ? 'banner-ok' : 'banner-warn';
+    const icon = isActual ? 'fa-check-circle' : 'fa-bolt';
+    const badgeLabel = isActual ? 'Actual bill' : 'Estimated';
     let detail = '';
     if (isOpen && payload.forecast) {
-      detail = `cycle in progress · ${payload.forecast.days_elapsed} of ${payload.forecast.total_days} days elapsed`;
+      detail = `cycle in progress · day ${payload.forecast.days_elapsed} of ${payload.forecast.total_days}`;
       const lastYr = payload.forecast.same_month_last_year_units;
-      if (lastYr != null) {
-        detail += ` · vs ${payload.forecast.same_month_last_year_label}: ${lastYr}`;
-      }
+      if (lastYr != null) detail += ` · ${payload.forecast.same_month_last_year_label} last year: ${lastYr} units`;
     } else if (!isOpen && !isActual) {
-      detail = 'awaiting bill — record actuals to lock in';
+      detail = 'awaiting the paper bill · record the meter units to lock it in';
+    } else if (isActual) {
+      detail = 'meter units recorded from the paper bill';
     }
 
     let statusLine = '';
@@ -132,8 +128,8 @@
       if (flip && flip.flips_to) {
         flipText = ` · flips ${flip.flips_to} ${flip.at_cycle}${flip.condition ? ' (' + flip.condition + ')' : ''}`;
       }
-      const tone = status.status === 'protected' ? 'text-emerald-300' : 'text-amber-300';
-      statusLine = `<div class="text-xs ${tone} mt-1">Status: <strong>${status.status.toUpperCase()}</strong>${flipText}</div>`;
+      const t = status.status === 'protected' ? 'tone-ok' : 'tone-warn';
+      statusLine = `<div class="banner-sub"><span class="${t}">Status: <b>${status.status.toUpperCase()}</b></span>${flipText}</div>`;
     }
 
     let calLine = '';
@@ -141,50 +137,48 @@
     if (cal.factor != null) {
       const pct = ((cal.factor - 1) * 100).toFixed(1);
       const dir = cal.factor >= 1 ? 'more' : 'less';
-      calLine = `<div class="text-xs text-white/60 mt-1">Meter vs inverter: the bill shows <strong>${Math.abs(pct)}% ${dir}</strong> than the inverter's estimate (×${cal.factor}, ${cal.cycles.length} cycle${cal.cycles.length === 1 ? '' : 's'}).</div>`;
+      calLine = `<div class="banner-sub">Meter vs inverter: the bill shows <b>${Math.abs(pct)}% ${dir}</b> than the inverter's estimate (×${cal.factor}, ${cal.cycles.length} cycle${cal.cycles.length === 1 ? '' : 's'}).</div>`;
     } else if (!isOpen && !isActual) {
-      calLine = `<div class="text-xs text-white/60 mt-1">Record the units from the paper bill (pencil icon in the table below) to see how far the inverter's estimate is from the meter.</div>`;
+      calLine = `<div class="banner-sub">Record the units from the paper bill (pencil in the table below) to see how far the inverter's estimate sits from the meter.</div>`;
     }
 
-    $('status-banner').className = `rounded-xl p-4 mb-4 border ${badgeBg}`;
+    $('status-banner').className = `banner ${tone}`;
     $('status-banner').innerHTML = `
-      <div class="flex items-start gap-3">
-        <i class="fas ${badgeIcon} mt-0.5 ${isOpen ? 'pulse-est' : ''}"></i>
-        <div>
-          <div class="text-white text-sm"><strong>${badgeLabel}</strong> · ${detail}</div>
-          ${statusLine}
-          ${calLine}
-        </div>
+      <i class="fas ${icon} ${isOpen ? 'pulse-est' : ''}"></i>
+      <div>
+        <div class="banner-title">${badgeLabel} <span class="muted" style="font-weight:500">· ${detail}</span></div>
+        ${statusLine}
+        ${calLine}
       </div>
     `;
   }
 
+  const row = (k, v) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+
   function renderCharges(payload) {
     const b = payload.bill_breakdown;
-    const fesco = $('fesco-charges');
-    fesco.innerHTML = `
-      <div class="flex justify-between"><span class="text-white/70">Cost of electricity (${fmtKwh(b.units)} units)</span><span class="text-white">${fmtPkr(b.energy_charge)}</span></div>
-      <div class="flex justify-between"><span class="text-white/70">Fix charges</span><span class="text-white">${fmtPkr(b.fix_charges)}</span></div>
-      <div class="flex justify-between"><span class="text-white/70">FPA</span><span class="text-white">${fmtPkr(b.fpa)}</span></div>
-      <div class="flex justify-between"><span class="text-white/70">FC surcharge</span><span class="text-white">${fmtPkr(b.fc_surcharge)}</span></div>
-      <div class="flex justify-between"><span class="text-white/70">QTR tariff adj</span><span class="text-white">${fmtPkr(b.qta)}</span></div>
-    `;
-    const govt = $('govt-charges');
-    govt.innerHTML = `
-      <div class="flex justify-between"><span class="text-white/70">Electricity duty</span><span class="text-white">${fmtPkr(b.electricity_duty)}</span></div>
-      <div class="flex justify-between"><span class="text-white/70">TV fee</span><span class="text-white">${fmtPkr(b.tv_fee)}</span></div>
-      <div class="flex justify-between"><span class="text-white/70">GST</span><span class="text-white">${fmtPkr(b.gst)}</span></div>
-    `;
+    $('fesco-charges').innerHTML = [
+      row(`Cost of electricity (${fmtKwh(b.units)} units)`, `Rs ${fmtPkr(b.energy_charge)}`),
+      row('Fixed charges', `Rs ${fmtPkr(b.fix_charges)}`),
+      row('FPA', `Rs ${fmtPkr(b.fpa)}`),
+      row('FC surcharge', `Rs ${fmtPkr(b.fc_surcharge)}`),
+      row('Quarterly tariff adjustment', `Rs ${fmtPkr(b.qta)}`),
+    ].join('');
+    $('govt-charges').innerHTML = [
+      row('Electricity duty', `Rs ${fmtPkr(b.electricity_duty)}`),
+      row('TV fee', `Rs ${fmtPkr(b.tv_fee)}`),
+      row('GST', `Rs ${fmtPkr(b.gst)}`),
+    ].join('');
   }
 
   function renderSlab(payload) {
     const b = payload.bill_breakdown;
     const lines = (b.energy_lines || []).map((l) =>
-      `<div class="text-white">${fmtKwh(l.units)} units × Rs ${l.rate} (${l.label}) = Rs ${fmtPkr(l.amount)}</div>`
+      `<div class="slab-line"><b>${fmtKwh(l.units)} units</b> × Rs ${l.rate} <span class="muted">(${l.label})</span> = <b>Rs ${fmtPkr(l.amount)}</b></div>`
     ).join('');
     let cliff = '';
     if (b.slab_info && b.slab_info.units_to_next_slab != null && b.slab_info.units_to_next_slab > 0) {
-      cliff = `<div class="text-amber-300 text-xs mt-2">⚠ ${b.slab_info.units_to_next_slab.toFixed(0)} units to next slab cliff</div>`;
+      cliff = `<div class="tone-warn" style="font-size:12.5px; margin-top:8px"><i class="fas fa-triangle-exclamation"></i> ${b.slab_info.units_to_next_slab.toFixed(0)} units to the next slab</div>`;
     }
     $('slab-breakdown').innerHTML = lines + cliff;
   }
@@ -194,46 +188,34 @@
     const lp = payload.lp_surcharge || {};
     const h = payload.header;
     $('payable-block').innerHTML = `
-      <div class="flex items-center justify-between text-lg">
-        <span class="text-white/80">Payable within due date (${fmtDate(h.due_date)})</span>
-        <span class="text-white font-bold">Rs ${fmtPkr(b.total)}</span>
+      <div class="pay-main">
+        <span class="pay-l">Payable within due date <b>${fmtDate(h.due_date)}</b></span>
+        <span class="pay-v">Rs ${fmtPkr(b.total)}</span>
       </div>
-      <div class="flex items-center justify-between text-sm mt-1">
-        <span class="text-white/50">L.P. surcharge after due date (4%)</span>
-        <span class="text-white/70">+ Rs ${fmtPkr(lp.phase_1_pkr)}</span>
-      </div>
-      <div class="flex items-center justify-between text-sm">
-        <span class="text-white/50">L.P. surcharge after ${fmtDate(h.lp_phase_2_date)} (8%)</span>
-        <span class="text-white/70">+ Rs ${fmtPkr(lp.phase_2_pkr)}</span>
-      </div>
+      <div class="pay-sub"><span>L.P. surcharge after the due date (4%)</span><span>+ Rs ${fmtPkr(lp.phase_1_pkr)}</span></div>
+      <div class="pay-sub"><span>L.P. surcharge after ${fmtDate(h.lp_phase_2_date)} (8%)</span><span>+ Rs ${fmtPkr(lp.phase_2_pkr)}</span></div>
     `;
   }
 
   function renderHistory(payload) {
     const tbody = $('history-body');
-    const rows = (payload.history || []).map((row) => {
-      const billCol = row.bill_amount != null && row.bill_amount < 0
-        ? `<span class="text-rose-400">${fmtPkr(row.bill_amount)} (refund)</span>`
-        : fmtPkr(row.bill_amount);
-      const meterCol = row.units_actual != null
-        ? `<span class="text-white">${fmtKwh(row.units_actual)}</span>`
-        : `<span class="text-white/40" title="not recorded yet">—</span>`;
-      const estCol = row.units_estimated != null
-        ? `<span class="text-white/70">${fmtKwh(row.units_estimated)}</span>`
-        : `<span class="text-white/30">—</span>`;
-      const billTone = row.is_actual ? 'text-white' : 'text-white/60';
-      return `<tr class="border-t border-white/5" data-label="${row.label}">
-        <td class="py-1.5 text-white">${row.label}</td>
-        <td class="py-1.5 text-right meter-cell">${meterCol}</td>
-        <td class="py-1.5 text-right">${estCol}</td>
-        <td class="py-1.5 text-right ${billTone}">${billCol}</td>
-        <td class="py-1.5 text-right text-white/70">${fmtPkr(row.paid)}</td>
-        <td class="py-1.5 text-right">
-          <button class="record-actual text-white/40 hover:text-white text-xs" title="Record the units and amount from the paper bill"><i class="fas fa-pencil"></i></button>
-        </td>
+    tbody.innerHTML = (payload.history || []).map((r) => {
+      const billCol = r.bill_amount != null && r.bill_amount < 0
+        ? `<span class="tone-bad">${fmtPkr(r.bill_amount)} (refund)</span>`
+        : fmtPkr(r.bill_amount);
+      const meterCol = r.units_actual != null
+        ? `<span>${fmtKwh(r.units_actual)}</span>`
+        : `<span class="muted" title="not recorded yet">—</span>`;
+      const estCol = r.units_estimated != null ? fmtKwh(r.units_estimated) : '<span class="muted">—</span>';
+      return `<tr data-label="${r.label}">
+        <td><b>${r.label}</b></td>
+        <td class="num meter-cell">${meterCol}</td>
+        <td class="num muted">${estCol}</td>
+        <td class="num ${r.is_actual ? '' : 'muted'}">${billCol}</td>
+        <td class="num muted">${fmtPkr(r.paid)}</td>
+        <td class="num"><button type="button" class="record-actual icon-btn sm" title="Record the units and amount from the paper bill"><i class="fas fa-pencil"></i></button></td>
       </tr>`;
     }).join('');
-    tbody.innerHTML = rows;
     tbody.querySelectorAll('.record-actual').forEach((btn) => {
       btn.addEventListener('click', () => openActualEditor(btn.closest('tr')));
     });
@@ -241,26 +223,24 @@
     const line = $('calibration-line');
     if (line) {
       line.textContent = cal.factor != null
-        ? `Calibration ×${cal.factor} from ${cal.cycles.map((c) => `${c.label} ${c.actual}/${c.estimated}`).join(', ')}. Nothing applies this automatically; it tells you how far the inverter-derived units sit from the meter.`
-        : 'Meter column = units printed on the FESCO bill; Inverter est. = grid kWh derived from the inverter\'s readings. Record a bill to compare them.';
+        ? `Calibration ×${cal.factor} from ${cal.cycles.map((c) => `${c.label} ${c.actual}/${c.estimated}`).join(', ')}. Nothing applies this automatically; it shows how far the inverter-derived units sit from the meter.`
+        : 'Meter = units printed on the FESCO bill; Inverter est. = grid kWh derived from the inverter\'s readings. Record a bill to compare them.';
     }
   }
 
   function openActualEditor(tr) {
     const label = tr.dataset.label;
-    const row = (window.__billHistory || []).find((r) => r.label === label) || {};
+    const rowData = (window.__billHistory || []).find((r) => r.label === label) || {};
     const cell = tr.querySelector('.meter-cell');
     const prev = cell.innerHTML;
     cell.innerHTML = `
-      <div class="flex flex-col items-end gap-1">
-        <input type="number" min="0" step="1" value="${row.units_actual ?? ''}" placeholder="units" data-f="units"
-               class="w-24 bg-white/10 border border-white/20 text-white rounded px-2 py-1 text-xs text-right">
-        <input type="number" step="0.01" value="${row.is_actual && row.bill_amount != null ? row.bill_amount : ''}" placeholder="bill PKR" data-f="bill"
-               class="w-24 bg-white/10 border border-white/20 text-white rounded px-2 py-1 text-xs text-right">
-        <div class="flex gap-2">
-          <button data-act="save" class="text-emerald-300 hover:text-emerald-100 text-xs">Save</button>
-          <button data-act="clear" class="text-white/50 hover:text-white text-xs" title="Remove the recorded meter figure">Clear</button>
-          <button data-act="cancel" class="text-white/50 hover:text-white text-xs">Cancel</button>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px">
+        <input type="number" min="0" step="1" value="${rowData.units_actual ?? ''}" placeholder="units" data-f="units" class="input sm num" style="width:6.5rem">
+        <input type="number" step="0.01" value="${rowData.is_actual && rowData.bill_amount != null ? rowData.bill_amount : ''}" placeholder="bill PKR" data-f="bill" class="input sm num" style="width:6.5rem">
+        <div style="display:flex; gap:10px">
+          <button type="button" data-act="save" class="link-btn">Save</button>
+          <button type="button" data-act="clear" class="link-btn muted" title="Remove the recorded meter figure">Clear</button>
+          <button type="button" data-act="cancel" class="link-btn muted">Cancel</button>
         </div>
       </div>`;
     cell.querySelector('[data-f="units"]').focus();
@@ -288,15 +268,13 @@
     allCycles.forEach((c) => {
       const opt = document.createElement('option');
       opt.value = c.cycle_label;
-      const tag = c.status === 'open' ? ' (open)' : '';
-      opt.textContent = `${c.cycle_label}${tag}`;
+      opt.textContent = `${c.cycle_label}${c.status === 'open' ? ' (open)' : ''}`;
       if (c.cycle_label === currentLabel) opt.selected = true;
       sel.appendChild(opt);
     });
     sel.onchange = () => {
-      const next = sel.value;
       const url = new URL(window.location.href);
-      url.searchParams.set('cycle', next);
+      url.searchParams.set('cycle', sel.value);
       window.location.href = url.toString();
     };
   }
@@ -307,7 +285,7 @@
     const params = new URLSearchParams(window.location.search);
     const requestedLabel = params.get('cycle');
 
-    let cyclesResp, billResp;
+    let cyclesResp;
     try {
       cyclesResp = await fetchJSON('/fesco/cycles');
     } catch (e) {
@@ -318,6 +296,7 @@
     if (cyclesResp.cycles.length === 0) {
       $('bootstrap-pane').classList.remove('hidden');
       $('bill-pane').classList.add('hidden');
+      $('cycle-picker').classList.add('hidden');
       buildBootstrapRows();
       $('bootstrap-form').addEventListener('submit', submitBootstrap);
       return;
@@ -327,7 +306,7 @@
     $('bill-pane').classList.remove('hidden');
 
     const url = requestedLabel ? `/fesco/bill?cycle=${encodeURIComponent(requestedLabel)}` : '/fesco/bill';
-    billResp = await fetchJSON(url);
+    const billResp = await fetchJSON(url);
 
     $('bill-title').textContent = `FESCO Bill — ${billResp.cycle.cycle_label}`;
     $('bill-subtitle').textContent = `${fmtDate(billResp.cycle.start_date)} → ${fmtDate(billResp.cycle.end_date)}`;

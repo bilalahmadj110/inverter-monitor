@@ -4,137 +4,87 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>FESCO Bill - Inverter Monitor</title>
-    <link rel="icon" type="image/png" href="/static/icons/favicon.png">
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <style>
-        :root { color-scheme: dark; }
-        html, body { color-scheme: dark; }
-        input, select, textarea, button { color-scheme: dark; color: #fff; }
-        ::placeholder { color: rgba(255, 255, 255, 0.55); opacity: 1; }
-        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
-        .pulse-est { animation: pulse-est 2s ease-in-out infinite; }
-        @keyframes pulse-est {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
-        }
-    </style>
+    <title>FESCO Bill · Inverter Monitor</title>
+    {% include '_head.html' %}
 </head>
-<body class="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-indigo-900">
+<body>
+    {% set active = 'fesco' %}
+    {% include '_nav.html' %}
 
-    <nav class="bg-black/30 backdrop-blur-sm border-b border-white/10">
-        <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <div class="flex items-center gap-2 text-white font-semibold shrink-0">
-                <i class="fas fa-solar-panel text-yellow-300"></i>
-                <div class="leading-tight">
-                    <div>Inverter Monitor</div>
-                    <div class="text-[8px] font-mono font-normal text-white/25 tracking-wide">build {{ app_version }}</div>
-                </div>
+    <main class="shell shell-narrow" id="page-root">
+        <div class="page-head">
+            <div>
+                <div class="eyebrow">FESCO</div>
+                <h1 class="page-title" id="bill-title">Electricity bill</h1>
+                <p class="page-sub" id="bill-subtitle">Estimated from the inverter's grid readings until the paper bill arrives.</p>
             </div>
-            <div class="flex items-center gap-1 overflow-x-auto max-w-full">
-                <a href="/" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Live</a>
-                <a href="/reports" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Reports</a>
-                <a href="/savings" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">Savings</a>
-                <a href="/fesco-bill" class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white">FESCO Bill</a>
-                <form method="post" action="{{ url_for('auth.logout') }}" class="inline shrink-0">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium text-white/60 hover:bg-white/10 hover:text-white transition-colors" title="Sign out">
-                        <i class="fas fa-right-from-bracket"></i>
-                    </button>
-                </form>
+            <div class="head-actions">
+                <select id="cycle-picker" class="input auto" aria-label="Billing cycle"></select>
             </div>
         </div>
-    </nav>
 
-    <div class="max-w-4xl mx-auto px-4 py-6" id="page-root">
-
-        <!-- Bootstrap state (shown only when no cycles exist) -->
-        <div id="bootstrap-pane" class="hidden bg-white/5 border border-white/10 rounded-xl p-6 mb-6">
-            <h2 class="text-2xl font-bold text-white mb-2">Welcome — record your last 12 months first</h2>
-            <p class="text-white/70 text-sm mb-4">
-                Open any recent FESCO bill. Type the 12 rows from its
-                <em>"MONTH / UNITS / BILL / PAYMENT"</em> grid below. We'll use
-                this to detect Protected status and seed your history.
-            </p>
-            <form id="bootstrap-form" class="space-y-2">
-                <div class="grid grid-cols-12 gap-2 text-xs text-white/50 px-2">
-                    <div class="col-span-3">Month</div>
-                    <div class="col-span-3">Units</div>
-                    <div class="col-span-3">Bill (PKR)</div>
-                    <div class="col-span-3">Paid (PKR)</div>
-                </div>
+        <!-- Bootstrap state (only when no cycles exist yet) -->
+        <section id="bootstrap-pane" class="card hidden">
+            <div class="card-h"><h2 class="card-title"><i class="fas fa-database"></i>Record your last 12 months first</h2></div>
+            <p class="card-sub">Open any recent FESCO bill and copy the 12 rows of its <em>MONTH / UNITS / BILL / PAYMENT</em> grid below. They seed the history and decide whether the connection counts as Protected.</p>
+            <form id="bootstrap-form">
+                <div class="boot-row head"><div>Month</div><div>Units</div><div>Bill (PKR)</div><div>Paid (PKR)</div></div>
                 <div id="bootstrap-rows"></div>
-                <button type="submit" class="w-full mt-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold">
-                    <i class="fas fa-database mr-2"></i> Save 12-month history
-                </button>
+                <button type="submit" class="btn btn-primary btn-block" style="margin-top:12px"><i class="fas fa-save"></i> Save 12-month history</button>
             </form>
+        </section>
+
+        <!-- Bill -->
+        <div id="bill-pane" class="stack hidden">
+            <section id="header-strip" class="card kv-grid" aria-label="Account"></section>
+            <div id="status-banner" class="banner"></div>
+
+            <section class="grid-2">
+                <div class="card">
+                    <div class="card-h"><h2 class="card-title"><i class="fas fa-bolt"></i>FESCO charges</h2></div>
+                    <div id="fesco-charges" class="rows-leader"></div>
+                </div>
+                <div class="card">
+                    <div class="card-h"><h2 class="card-title"><i class="fas fa-landmark"></i>Government charges</h2></div>
+                    <div id="govt-charges" class="rows-leader"></div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-h"><h2 class="card-title"><i class="fas fa-layer-group"></i>Slab breakdown</h2></div>
+                <div id="slab-breakdown"></div>
+            </section>
+
+            <div id="payable-block" class="pay"></div>
+
+            <section class="card">
+                <div class="card-h"><h2 class="card-title"><i class="fas fa-clock-rotate-left"></i>Last 12 months</h2></div>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th class="num" title="Units printed on the FESCO bill">Meter</th>
+                                <th class="num" title="Grid kWh derived from the inverter's readings">Inverter est.</th>
+                                <th class="num">Bill</th>
+                                <th class="num">Paid</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-body"></tbody>
+                    </table>
+                </div>
+                <p class="note small" id="calibration-line" style="margin:12px 0 0"></p>
+            </section>
         </div>
 
-        <!-- Main bill view (hidden during bootstrap state) -->
-        <div id="bill-pane" class="hidden">
-            <!-- Cycle picker -->
-            <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-3">
-                    <i class="fas fa-file-invoice text-blue-300 text-2xl"></i>
-                    <div>
-                        <div class="text-white text-2xl font-bold" id="bill-title">FESCO Bill</div>
-                        <div class="text-white/50 text-xs" id="bill-subtitle"></div>
-                    </div>
-                </div>
-                <select id="cycle-picker" class="bg-white/10 border border-white/20 text-white text-sm rounded-lg px-3 py-2"></select>
-            </div>
+        <footer class="foot">
+            <span>Inverter Monitor</span>
+            <span class="mono">build {{ app_version }}</span>
+        </footer>
+    </main>
 
-            <!-- Header strip (consumer + dates) -->
-            <div id="header-strip" class="bg-white/5 border border-white/10 rounded-xl p-4 mb-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm"></div>
-
-            <!-- Status banner (estimated/actual + Protected) -->
-            <div id="status-banner" class="rounded-xl p-4 mb-4"></div>
-
-            <!-- Charges grid (2 columns: FESCO | GOVT) -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div class="bg-white/5 border border-white/10 rounded-xl p-4">
-                    <div class="text-xs uppercase tracking-wider text-white/50 mb-3">FESCO Charges</div>
-                    <div id="fesco-charges" class="space-y-1.5 text-sm"></div>
-                </div>
-                <div class="bg-white/5 border border-white/10 rounded-xl p-4">
-                    <div class="text-xs uppercase tracking-wider text-white/50 mb-3">Govt Charges</div>
-                    <div id="govt-charges" class="space-y-1.5 text-sm"></div>
-                </div>
-            </div>
-
-            <!-- Slab breakdown -->
-            <div class="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
-                <div class="text-xs uppercase tracking-wider text-white/50 mb-3">Slab Breakdown</div>
-                <div id="slab-breakdown" class="text-sm"></div>
-            </div>
-
-            <!-- Payable -->
-            <div id="payable-block" class="bg-blue-900/30 border border-blue-500/30 rounded-xl p-4 mb-4"></div>
-
-            <!-- 12-month history -->
-            <div class="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
-                <div class="text-xs uppercase tracking-wider text-white/50 mb-3">Last 12 months</div>
-                <table class="w-full text-sm">
-                    <thead class="text-white/50 text-xs uppercase">
-                        <tr>
-                            <th class="text-left py-2">Month</th>
-                            <th class="text-right py-2" title="Units printed on the FESCO bill">Meter</th>
-                            <th class="text-right py-2" title="Grid kWh derived from the inverter's readings">Inverter est.</th>
-                            <th class="text-right py-2">Bill</th>
-                            <th class="text-right py-2">Paid</th>
-                            <th class="py-2"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-body"></tbody>
-                </table>
-                <div id="calibration-line" class="text-xs text-white/50 mt-3"></div>
-            </div>
-
-        </div>
-
-    </div>
-
-    <script src="/static/js/fesco_bill.js"></script>
+    <script src="{{ url_for('static', filename='js/ui.js') }}?v={{ app_version }}"></script>
+    <script src="{{ url_for('static', filename='js/fesco_bill.js') }}?v={{ app_version }}"></script>
 </body>
 </html>

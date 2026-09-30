@@ -91,7 +91,7 @@
     }
 
     function renderBillBreakdown(bill) {
-        if (!bill) return '<div class="text-white/50">no data</div>';
+        if (!bill) return '<div class="muted">no data</div>';
         const lines = (bill.energy_lines || []).map(l => `
             <div class="row"><span class="k">${l.label} · ${l.units} kWh @ Rs ${l.rate}</span><span class="v">Rs ${fmtPKR(l.amount)}</span></div>
         `).join('');
@@ -105,9 +105,9 @@
             <div class="row"><span class="k">Electricity Duty</span><span class="v">Rs ${fmtPKR(bill.electricity_duty)}</span></div>
             <div class="row"><span class="k">Extra Tax</span><span class="v">Rs ${fmtPKR(bill.extra_tax)}</span></div>
             <div class="row"><span class="k">TV Fee</span><span class="v">Rs ${fmtPKR(bill.tv_fee)}</span></div>
-            <div class="row"><span class="k font-semibold">Total</span><span class="v font-semibold">Rs ${fmtPKR(bill.total)}</span></div>
+            <div class="row total"><span class="k">Total</span><span class="v">Rs ${fmtPKR(bill.total)}</span></div>
             <div class="row"><span class="k">Effective rate</span><span class="v">Rs ${fmtRate(bill.effective_rate_per_unit)} /kWh</span></div>
-            ${bill.min_bill_applied ? '<div class="text-amber-300 text-xs mt-1">Minimum-bill floor applied.</div>' : ''}
+            ${bill.min_bill_applied ? '<div class="tone-warn" style="font-size:12px; margin-top:6px">Minimum-bill floor applied.</div>' : ''}
         `;
     }
 
@@ -160,25 +160,25 @@
                 <b>${pb.payback_months} months</b> (~${pb.payback_years} years).
             `;
         } else if (pb.status === 'set_install_cost') {
-            out.innerHTML = `<span class="text-white/60">Enter your install cost above to see payback.</span>`;
+            out.innerHTML = `<span class="muted">Enter your install cost above to see payback.</span>`;
         } else {
-            out.innerHTML = `<span class="text-white/60">Not enough savings history yet — check back after a few days of data.</span>`;
+            out.innerHTML = `<span class="muted">Not enough savings history yet — check back after a few days of data.</span>`;
         }
     }
 
     function renderHistory(months) {
         const tbody = $('month-history');
         if (!months.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="py-3 text-center text-white/50">No history yet.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="empty">No history yet.</td></tr>';
             return;
         }
         tbody.innerHTML = months.slice().reverse().map(m => `
-            <tr class="border-b border-white/5">
-                <td class="py-2">${m.month}</td>
-                <td class="text-right py-2 text-yellow-200">${fmtKWh(m.solar_kwh)}</td>
-                <td class="text-right py-2 text-blue-200">${fmtKWh(m.grid_kwh)}</td>
-                <td class="text-right py-2 text-purple-200">${fmtKWh(m.load_kwh)}</td>
-                <td class="text-right py-2 text-emerald-200">Rs ${fmtPKR(m.savings_pkr)}</td>
+            <tr>
+                <td><b>${m.month}</b></td>
+                <td class="num c-solar">${fmtKWh(m.solar_kwh)}</td>
+                <td class="num c-grid">${fmtKWh(m.grid_kwh)}</td>
+                <td class="num c-load">${fmtKWh(m.load_kwh)}</td>
+                <td class="num tone-ok"><b>Rs ${fmtPKR(m.savings_pkr)}</b></td>
             </tr>
         `).join('');
     }
@@ -189,20 +189,20 @@
         if (!body || !pill) return;
         const rows = (tc && tc.cycles) || [];
         if (!rows.length) {
-            body.innerHTML = '<tr><td colspan="5" class="py-2 text-white/50">No cycles with a real bill amount yet — bootstrap your history or record a meter reading on the FESCO Bill page.</td></tr>';
+            body.innerHTML = '<tr><td colspan="5" class="empty">No cycles with a real bill amount yet. Bootstrap your history or record a meter reading on the FESCO Bill page.</td></tr>';
             pill.className = 'pill info';
             pill.textContent = 'no data';
             return;
         }
         body.innerHTML = rows.map(r => {
-            const tone = Math.abs(r.error_pct) <= 5 ? 'text-emerald-300' : Math.abs(r.error_pct) <= 15 ? 'text-amber-300' : 'text-red-300';
+            const tone = Math.abs(r.error_pct) <= 5 ? 'tone-ok' : Math.abs(r.error_pct) <= 15 ? 'tone-warn' : 'tone-bad';
             const sign = r.error_pct > 0 ? '+' : '';
-            return `<tr class="border-b border-white/5">
-                <td class="py-1.5">${r.label}</td>
-                <td class="text-right py-1.5">${fmtKWh(r.units)}</td>
-                <td class="text-right py-1.5">Rs ${fmtPKR(r.actual_pkr)}</td>
-                <td class="text-right py-1.5">Rs ${fmtPKR(r.model_pkr)}</td>
-                <td class="text-right py-1.5 ${tone}">${sign}${r.error_pct}%</td>
+            return `<tr>
+                <td><b>${r.label}</b></td>
+                <td class="num">${fmtKWh(r.units)}</td>
+                <td class="num">Rs ${fmtPKR(r.actual_pkr)}</td>
+                <td class="num">Rs ${fmtPKR(r.model_pkr)}</td>
+                <td class="num ${tone}"><b>${sign}${r.error_pct}%</b></td>
             </tr>`;
         }).join('');
         const mae = tc.mean_abs_error_pct;
@@ -234,17 +234,17 @@
         if (!c) return;
         const renderSlabRows = (slabs, prefix) => slabs.map((s, i) => `
             <div class="slab-row" data-prefix="${prefix}" data-idx="${i}">
-                <input type="text" data-field="label" value="${s.label || ''}" placeholder="label">
-                <input type="number" data-field="up_to" value="${s.up_to ?? ''}" placeholder="up to (blank = ∞)">
-                <input type="number" step="0.01" data-field="rate" value="${s.rate ?? ''}" placeholder="rate">
-                <button class="del-slab text-red-300 hover:text-red-100 text-sm" title="remove"><i class="fas fa-trash"></i></button>
+                <input type="text" class="input sm" data-field="label" value="${s.label || ''}" placeholder="label">
+                <input type="number" class="input sm" data-field="up_to" value="${s.up_to ?? ''}" placeholder="up to (blank = ∞)">
+                <input type="number" class="input sm" step="0.01" data-field="rate" value="${s.rate ?? ''}" placeholder="rate">
+                <button type="button" class="del-slab icon-btn sm danger" title="remove"><i class="fas fa-trash"></i></button>
             </div>
         `).join('');
 
         $('protected-slabs').innerHTML = renderSlabRows(c.protected_slabs || [], 'p') +
-            `<button id="add-protected-slab" class="text-blue-300 hover:text-blue-100 text-sm mt-1"><i class="fas fa-plus"></i> add slab</button>`;
+            `<button type="button" id="add-protected-slab" class="link-btn"><i class="fas fa-plus"></i> add slab</button>`;
         $('unprotected-slabs').innerHTML = renderSlabRows(c.unprotected_slabs || [], 'u') +
-            `<button id="add-unprotected-slab" class="text-blue-300 hover:text-blue-100 text-sm mt-1"><i class="fas fa-plus"></i> add slab</button>`;
+            `<button type="button" id="add-unprotected-slab" class="link-btn"><i class="fas fa-plus"></i> add slab</button>`;
 
         $('add-protected-slab').onclick = () => addSlab('p');
         $('add-unprotected-slab').onclick = () => addSlab('u');
@@ -260,10 +260,10 @@
         row.className = 'slab-row';
         row.dataset.prefix = prefix;
         row.innerHTML = `
-            <input type="text" data-field="label" value="new" placeholder="label">
-            <input type="number" data-field="up_to" value="" placeholder="up to (blank = ∞)">
-            <input type="number" step="0.01" data-field="rate" value="0" placeholder="rate">
-            <button class="del-slab text-red-300 hover:text-red-100 text-sm"><i class="fas fa-trash"></i></button>
+            <input type="text" class="input sm" data-field="label" value="new" placeholder="label">
+            <input type="number" class="input sm" data-field="up_to" value="" placeholder="up to (blank = ∞)">
+            <input type="number" class="input sm" step="0.01" data-field="rate" value="0" placeholder="rate">
+            <button type="button" class="del-slab icon-btn sm danger"><i class="fas fa-trash"></i></button>
         `;
         container.insertBefore(row, addBtn);
         row.querySelector('.del-slab').onclick = (ev) => ev.target.closest('.slab-row').remove();
@@ -311,8 +311,8 @@
     function toast(msg, kind) {
         const el = $('config-toast');
         el.textContent = msg;
-        el.className = 'ml-2 self-center text-sm ' + (kind === 'err' ? 'text-red-300' : 'text-emerald-300');
-        setTimeout(() => { el.textContent = ''; el.className = 'ml-2 self-center text-sm'; }, 3000);
+        el.className = 'toast-inline ' + (kind === 'err' ? 'tone-bad' : 'tone-ok');
+        setTimeout(() => { el.textContent = ''; el.className = 'toast-inline'; }, 3000);
     }
 
     $('save-config').onclick = async () => {
@@ -356,7 +356,7 @@
         const { status, body } = await postJSON('/savings/preview', { units });
         if (status === 200) {
             $('whatif-result').innerHTML = `
-                <div class="mb-2 text-white">For <b>${fmtKWh(body.units)} kWh</b>:</div>
+                <div class="note" style="margin-bottom:6px">For <b>${fmtKWh(body.units)} kWh</b>:</div>
                 ${renderBillBreakdown(body)}
             `;
         } else {

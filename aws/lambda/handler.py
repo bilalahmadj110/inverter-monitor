@@ -43,6 +43,10 @@ WS_TOKEN_TTL_S = 10 * 60
 ROW_TTL_S = 3 * 3600          # API Gateway closes sockets after 2 h; rows outlive that a little
 LOGIN_MAX_PER_MINUTE = 5
 LOGIN_MAX_PER_HOUR = 30
+# The Lambda image lacks /etc/mime.types entries for web fonts.
+mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("font/woff", ".woff")
+
 PAGES = {"/": "solar_flow.html", "/reports": "history.html", "/savings": "savings.html",
          "/fesco-bill": "fesco_bill.html", "/classic": "dashboard.html"}
 HERE = Path(__file__).parent
@@ -202,8 +206,7 @@ def _page(name: str, error: str | None = None) -> str:
     html = html.replace("<!--RELAY-->", relay_boot, 1)
     if error:
         html = html.replace("<!--LOGIN_ERROR-->",
-                            '<div class="mb-4 px-3 py-2 rounded-lg bg-red-500/15 border border-red-400/40 '
-                            f'text-red-100 text-sm">{error}</div>', 1)
+                            f'<div class="alert alert-danger" style="margin-bottom:14px">{error}</div>', 1)
     return html
 
 

@@ -1,0 +1,36 @@
+<header class="topbar">
+        <div class="shell topbar-inner">
+            <a class="brand" href="/" title="build {{ app_version }}">
+                <span class="brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 15a8 8 0 0 1 16 0"/>
+                        <path d="M12 3v2M4.9 6.9l1.4 1.4M19.1 6.9l-1.4 1.4M2 15h2M20 15h2"/>
+                        <path d="M13 12l-3 5h4l-3 5"/>
+                    </svg>
+                </span>
+                <span>
+                    <span class="brand-name">Inverter Monitor</span>
+                    <span class="brand-build" style="display:block">build {{ app_version }}</span>
+                </span>
+            </a>
+            <nav class="nav" aria-label="Pages">
+                <a href="/" class="{{ 'active' if active == 'live' else '' }}">Live</a>
+                <a href="/reports" class="{{ 'active' if active == 'reports' else '' }}">Reports</a>
+                <a href="/savings" class="{{ 'active' if active == 'savings' else '' }}">Savings</a>
+                <a href="/fesco-bill" class="{{ 'active' if active == 'fesco' else '' }}">FESCO Bill</a>
+                <a href="/classic" class="{{ 'active' if active == 'readings' else '' }}">Readings</a>
+            </nav>
+            <div class="topbar-actions">
+                <span id="topbar-clock" class="mono muted" style="font-size:12px" aria-label="Local time"></span>
+                <button type="button" class="icon-btn theme-toggle" data-theme-toggle aria-label="Toggle colour theme">
+                    <i class="fas fa-moon"></i><i class="fas fa-sun"></i>
+                </button>
+                <form method="post" action="{{ url_for('auth.logout') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="icon-btn danger" title="Sign out" aria-label="Sign out">
+                        <i class="fas fa-right-from-bracket"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </header>
