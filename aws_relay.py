@@ -135,11 +135,20 @@ class LocalApp:
             log.error("local login failed (status %s)", status)
             return False
         self._cookie = cookie
-        status, _, body = self._open(urllib.request.Request(f"{LOCAL_APP_URL}/", headers={"Cookie": cookie}))
+        status, headers, body = self._open(urllib.request.Request(f"{LOCAL_APP_URL}/", headers={"Cookie": cookie}))
+        # Rendering the page stores the CSRF secret in the session, so Flask re-issues the
+        # cookie here; the token in the meta tag is only valid together with that cookie.
+        self._adopt_cookie(headers)
         m = re.search(rb'name="csrf-token" content="([^"]+)"', body)
         self._csrf = m.group(1).decode() if m else None
         log.info("logged in to local app")
         return True
+
+    def _adopt_cookie(self, headers) -> None:
+        """Flask refreshes permanent sessions on every response; keep the newest cookie."""
+        new = self._set_cookie(headers)
+        if new:
+            self._cookie = new
 
     def request(self, method: str, path: str, query: str = "", body: str | None = None,
                 ctype: str | None = None, timeout: int = 60, _retry: bool = True):
@@ -155,6 +164,7 @@ class LocalApp:
                 headers["Content-Type"] = ctype or "application/json"
         status, resp_headers, payload = self._open(
             urllib.request.Request(url, data=data, method=method, headers=headers), timeout)
+        self._adopt_cookie(resp_headers)
         if status in (401, 302) and _retry:
             self._cookie = None
             if self.login():

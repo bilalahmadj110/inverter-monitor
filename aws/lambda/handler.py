@@ -402,7 +402,10 @@ def handle_ws(event: dict) -> dict:
     # device-originated frames
     if action == "snapshot":
         snap = json.dumps(msg.get("data") or {})[:64_000]
-        _ddb.update_item(Key={"pk": "device"}, UpdateExpression="SET snapshot = :s, snapshot_at = :t, last_seen = :t",
+        # `snapshot` is a DynamoDB reserved word; it must go through an attribute-name alias.
+        _ddb.update_item(Key={"pk": "device"},
+                         UpdateExpression="SET #snap = :s, snapshot_at = :t, last_seen = :t",
+                         ExpressionAttributeNames={"#snap": "snapshot"},
                          ExpressionAttributeValues={":s": snap, ":t": now})
         return {"statusCode": 200}
     if action == "gone":

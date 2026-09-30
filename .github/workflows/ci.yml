@@ -88,8 +88,13 @@ jobs:
           .venv/bin/pip install --quiet --upgrade pip
           .venv/bin/pip install --quiet -r requirements.txt
 
-      - name: Restart service
-        run: sudo /bin/systemctl restart myflaskapp.service
+      - name: Restart services
+        run: |
+          sudo /bin/systemctl restart myflaskapp.service
+          # The AWS relay (aws_relay.py) runs the checked-out code too; restart it when installed.
+          if systemctl list-unit-files inverter-relay.service --no-legend | grep -q inverter-relay; then
+            sudo /bin/systemctl restart inverter-relay.service
+          fi
 
       - name: Verify service is running
         run: |
