@@ -283,15 +283,19 @@ class Relay:
 
     async def snapshotter(self):
         while True:
+            ok = False
             try:
                 status, _, body, _ = await asyncio.to_thread(self.local.request, "GET", "/status", "", None, None, 10)
                 s, _, sbody, _ = await asyncio.to_thread(self.local.request, "GET", "/stats-payload", "", None, None, 20)
                 if status == 200 and s == 200 and self.ws is not None:
                     snap = {"status": _strip(json.loads(body)), "stats": json.loads(sbody), "at": int(time.time())}
                     await self.ws.send(json.dumps({"action": "snapshot", "data": snap}))
+                    ok = True
             except Exception as e:
                 log.warning("snapshot failed: %s", e)
-            await asyncio.sleep(SNAPSHOT_INTERVAL_S)
+            # After a reboot this fires before Flask has bound its port; retry soon rather than
+            # leaving the page without a last-seen snapshot for a whole interval.
+            await asyncio.sleep(SNAPSHOT_INTERVAL_S if ok else 20)
 
     async def pinger(self):
         while True:
