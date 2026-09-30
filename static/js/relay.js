@@ -151,7 +151,22 @@
             return this;
         }
 
+        // Pages fire their first fetch() while the socket is still connecting; hold those
+        // calls until the relay has said hello instead of failing them.
+        _ready() {
+            if (this.connected && this.ws && this.ws.readyState === 1) return Promise.resolve();
+            return new Promise((resolve, reject) => {
+                const ok = () => { clearTimeout(timer); this.off('connect', ok); resolve(); };
+                const timer = setTimeout(() => { this.off('connect', ok); reject(new Error('relay not connected')); }, 20000);
+                this.on('connect', ok);
+            });
+        }
+
         rpc(method, url, init = {}) {
+            return this._ready().then(() => this._rpc(method, url, init));
+        }
+
+        _rpc(method, url, init) {
             return new Promise((resolve, reject) => {
                 if (!this.ws || this.ws.readyState !== 1) { reject(new Error('relay not connected')); return; }
                 const id = this.nextId++;
