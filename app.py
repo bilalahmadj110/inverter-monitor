@@ -221,6 +221,14 @@ def get_status():
     return jsonify(latest)
 
 
+@app.route('/stats-payload')
+@login_required
+def get_stats_payload():
+    """The aggregate the WebSocket `stats_update` event carries, over HTTP. Used by the AWS
+    relay (aws_relay.py), which pushes it on to remote viewers."""
+    return jsonify(_build_stats_payload())
+
+
 @app.route('/warnings')
 @login_required
 def get_warnings():

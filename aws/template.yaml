@@ -1,0 +1,229 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Inverter Monitor relay: a permanent HTTPS URL in front of the Raspberry Pi.
+  The Pi keeps every reading; AWS holds only WebSocket connection bookkeeping
+  (and, optionally, a few KB last-known snapshot) in one DynamoDB table.
+
+Parameters:
+  AppVersion:
+    Type: String
+    Default: dev
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+  ParamPrefix:
+    Type: String
+    Default: /inverter-relay
+    Description: SSM Parameter Store prefix holding admin_username, admin_password_hash, token_secret, device_secret.
+
+Resources:
+
+  # ---- state: connection ids only ------------------------------------------------------
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: inverter-relay-connections
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+      TimeToLiveSpecification: { AttributeName: ttl, Enabled: true }
+
+  # ---- WebSocket API: the Pi dials in as "device", browsers as "viewer" -----------------
+  WsApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: inverter-relay-ws
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+
+  WsIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WsApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RelayFunction.Arn}/invocations
+
+  WsConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: $connect
+      Target: !Sub 'integrations/${WsIntegration}'
+  WsDisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: $disconnect
+      Target: !Sub 'integrations/${WsIntegration}'
+  WsDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WsApi
+      RouteKey: $default
+      Target: !Sub 'integrations/${WsIntegration}'
+
+  WsStage:
+    Type: AWS::ApiGatewayV2::Stage
+    DependsOn: [WsConnectRoute, WsDisconnectRoute, WsDefaultRoute]
+    Properties:
+      ApiId: !Ref WsApi
+      StageName: prod
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 25
+
+  # ---- HTTP API: login + pages + static assets ------------------------------------------
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: inverter-relay-http
+      ProtocolType: HTTP
+
+  HttpIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      PayloadFormatVersion: '2.0'
+      IntegrationUri: !GetAtt RelayFunction.Arn
+
+  HttpDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: $default
+      Target: !Sub 'integrations/${HttpIntegration}'
+
+  HttpLoginRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: POST /login
+      Target: !Sub 'integrations/${HttpIntegration}'
+
+  HttpStage:
+    Type: AWS::ApiGatewayV2::Stage
+    DependsOn: [HttpDefaultRoute, HttpLoginRoute]
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 25
+      RouteSettings:
+        POST /login:
+          ThrottlingBurstLimit: 5
+          ThrottlingRateLimit: 1
+
+  # ---- the one Lambda ---------------------------------------------------------------------
+  RelayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/inverter-relay
+      RetentionInDays: !Ref LogRetentionDays
+
+  RelayFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: inverter-relay-lambda
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: inverter-relay
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/inverter-relay:*
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:Scan]
+                Resource: !GetAtt ConnectionsTable.Arn
+              - Effect: Allow
+                Action: execute-api:ManageConnections
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/prod/POST/@connections/*
+              - Effect: Allow
+                Action: [ssm:GetParameter, ssm:GetParameters]
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParamPrefix}/*
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: '*'
+                Condition:
+                  StringEquals: { 'kms:ViaService': !Sub 'ssm.${AWS::Region}.amazonaws.com' }
+
+  RelayFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: RelayLogGroup
+    Properties:
+      FunctionName: inverter-relay
+      Runtime: python3.12
+      Architectures: [arm64]
+      Handler: handler.lambda_handler
+      MemorySize: 256
+      Timeout: 15
+      Role: !GetAtt RelayFunctionRole.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ConnectionsTable
+          WS_URL: !Sub wss://${WsApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+          WS_MANAGEMENT_ENDPOINT: !Sub https://${WsApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+          HTTP_ORIGIN: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+          PARAM_PREFIX: !Ref ParamPrefix
+          APP_VERSION: !Ref AppVersion
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              return {"statusCode": 503, "body": "relay code not uploaded yet"}
+
+  WsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RelayFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/*
+
+  HttpInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RelayFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*
+
+  # ---- least-privilege identity for the Pi: it may only post to viewer connections -------
+  PiRelayUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: inverter-pi-relay
+      Policies:
+        - PolicyName: post-to-viewers
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: execute-api:ManageConnections
+                Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WsApi}/prod/POST/@connections/*
+
+Outputs:
+  HttpUrl:
+    Description: The permanent dashboard URL.
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+  WsUrl:
+    Value: !Sub wss://${WsApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+  WsManagementEndpoint:
+    Value: !Sub https://${WsApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+  TableName:
+    Value: !Ref ConnectionsTable
+  FunctionName:
+    Value: !Ref RelayFunction
+  PiUserName:
+    Value: !Ref PiRelayUser

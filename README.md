@@ -88,6 +88,31 @@ static/                 # CSS, JS, icons
 requirements.txt
 ```
 
+## Permanent URL through an AWS relay (optional)
+
+The dashboard can be reached at a fixed HTTPS address with no domain and no inbound port:
+an API Gateway WebSocket API plus one Lambda in front, and the Pi dialling *out* to it
+(`aws_relay.py`). Nothing about the readings is stored in AWS; one DynamoDB table holds
+connection ids and a few-KB last-seen snapshot. Live readings only flow while a logged-in
+viewer is connected, so the running cost is well under a dollar a month. Everything lives
+under `aws/`.
+
+```bash
+export AWS_PROFILE=nursepal AWS_REGION=ap-south-1
+python3 aws/set_secrets.py ensure                                  # token + device secrets
+echo -n '<dashboard password>' | python3 aws/set_secrets.py set-password --username admin
+PYTHON=/path/to/python-with-jinja2 aws/deploy.sh                   # stack + Lambda code, prints the URL
+echo -n '<pi app password>' | python3 aws/set_secrets.py pi-env --create-key \
+  | ssh bilal@pi 'install -m 600 /dev/stdin ~/.config/inverter-relay.env'
+# on the Pi
+sudo cp aws/inverter-relay.service /etc/systemd/system/ && sudo systemctl enable --now inverter-relay
+```
+
+Re-run `aws/deploy.sh` after changing anything under `aws/`, `static/` or `templates/`; the
+pages are pre-rendered into the Lambda package at deploy time. `aws/set_secrets.py rotate
+device_secret` (then refresh the Pi's env file) or `rotate token_secret` (logs every
+browser out) rotate the secrets.
+
 ## Contributing
 
 Issues and PRs are welcome. If you're adding support for another protocol / inverter family, please keep the fast-loop / slow-loop split and the single serial lock around `mpp-solar` invocations — they exist specifically to keep the HID bus stable.

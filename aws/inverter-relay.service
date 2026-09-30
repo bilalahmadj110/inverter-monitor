@@ -1,0 +1,18 @@
+[Unit]
+Description=Inverter Monitor AWS relay (device side)
+After=network-online.target myflaskapp.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bilal
+EnvironmentFile=/home/bilal/.config/inverter-relay.env
+WorkingDirectory=/home/bilal/Desktop/Inverter
+ExecStart=/home/bilal/Desktop/Inverter/.venv/bin/python /home/bilal/Desktop/Inverter/aws_relay.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

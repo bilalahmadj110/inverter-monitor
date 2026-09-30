@@ -531,8 +531,11 @@
                     const bucket = btn.dataset.bucket || '';
                     const params = new URLSearchParams({ from: date, to: date, format: fmt });
                     if (bucket) params.set('bucket', bucket);
-                    // Trigger a real download in the browser by navigating to the URL.
-                    window.location.href = `/export-readings?${params.toString()}`;
+                    // Trigger a real download. Through the AWS relay there is no HTTP route for
+                    // exports, so relay.js provides relayDownload() which fetches over the tunnel.
+                    const exportUrl = `/export-readings?${params.toString()}`;
+                    if (window.relayDownload) window.relayDownload(exportUrl);
+                    else window.location.href = exportUrl;
                     menu.classList.add('hidden');
                 });
             });
