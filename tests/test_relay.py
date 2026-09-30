@@ -105,6 +105,23 @@ def test_relay_token_requires_session_and_mints_ws_token(handler, secret_param):
     assert handler.verify_token(body["token"], "unit-test-secret", "session") is None   # not usable as a cookie
 
 
+def test_login_page_has_no_relay_bootstrap(handler, monkeypatch, tmp_path):
+    # Regression: the bootstrap on /login made relay.js fetch a token, get 401 and reload /login forever.
+    (tmp_path / "pages").mkdir()
+    (tmp_path / "pages" / "login.html").write_text("<html><head>\n<!--RELAY--></head><body><!--LOGIN_ERROR--><form></form></body></html>")
+    (tmp_path / "pages" / "solar_flow.html").write_text("<html><head>\n<!--RELAY--></head><body></body></html>")
+    monkeypatch.setattr(handler, "HERE", tmp_path)
+    monkeypatch.setattr(handler, "param", lambda name, ttl=300.0: "unit-test-secret")
+    login = handler.handle_http(_http_event("GET", "/login"))
+    assert login["statusCode"] == 200
+    assert "window.RELAY" not in login["body"] and "relay.js" not in login["body"] and "<!--RELAY-->" not in login["body"]
+    err = handler.handle_http(_http_event("GET", "/login", query={"e": "1"}))
+    assert "Invalid username or password" in err["body"]
+    tok = handler.sign_token({"kind": "session", "u": "admin", "exp": int(time.time()) + 60}, "unit-test-secret")
+    page = handler.handle_http(_http_event("GET", "/", cookies=[f"session={tok}"]))
+    assert page["statusCode"] == 200 and "window.RELAY=" in page["body"] and "/static/js/relay.js" in page["body"]
+
+
 def test_static_is_confined_to_package(handler, monkeypatch, tmp_path):
     (tmp_path / "static" / "js").mkdir(parents=True)
     (tmp_path / "static" / "js" / "relay.js").write_text("// ok")

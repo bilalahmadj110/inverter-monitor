@@ -192,8 +192,13 @@ def _rate_limited(ip: str) -> bool:
 
 def _page(name: str, error: str | None = None) -> str:
     html = (HERE / "pages" / name).read_text(encoding="utf-8")
-    relay_boot = (f'<script>window.RELAY={json.dumps({"ws": WS_URL, "version": APP_VERSION})};</script>'
-                  f'<script src="/static/js/relay.js?v={APP_VERSION}"></script>')
+    # The relay bootstrap belongs only on pages that have a session. On the login page
+    # relay.js would ask for a socket token, get 401 and bounce back to /login in a loop.
+    if name == "login.html":
+        relay_boot = ""
+    else:
+        relay_boot = (f'<script>window.RELAY={json.dumps({"ws": WS_URL, "version": APP_VERSION})};</script>'
+                      f'<script src="/static/js/relay.js?v={APP_VERSION}"></script>')
     html = html.replace("<!--RELAY-->", relay_boot, 1)
     if error:
         html = html.replace("<!--LOGIN_ERROR-->",

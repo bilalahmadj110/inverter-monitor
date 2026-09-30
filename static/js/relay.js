@@ -13,6 +13,9 @@
     'use strict';
     const cfg = window.RELAY;
     if (!cfg || !cfg.ws) return;
+    // Never run on the login page: without a session the token fetch is a 401 and the
+    // redirect below would reload /login endlessly.
+    if (window.location.pathname === '/login') return;
 
     const API_PREFIXES = [
         '/status', '/summary', '/stats', '/stats-payload', '/history', '/recent-readings',
@@ -55,7 +58,10 @@
             try {
                 const r = await realFetch('/relay/token', { credentials: 'same-origin', cache: 'no-store' });
                 if (r.status === 401) {
-                    window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                    // Session expired: go to login once, never from the login page itself.
+                    if (window.location.pathname !== '/login') {
+                        window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                    }
                     return;
                 }
                 if (!r.ok) throw new Error('token ' + r.status);
