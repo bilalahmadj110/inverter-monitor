@@ -250,8 +250,10 @@ with sync_playwright() as p:
     m.close()
 
     # ---- 10. logout ------------------------------------------------------------------------
-    goto(page, BASE + "/logout", "domcontentloaded")
-    check("logout lands on /login", page.url.startswith(BASE + "/login"), page.url)
+    goto(page, BASE + "/classic", "domcontentloaded")
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=60000):
+        page.click(".topbar-actions form button[type=submit]")   # sign-out is a POST form
+    check("sign-out button lands on /login", page.url.startswith(BASE + "/login"), page.url)
     goto(page, BASE + "/", "domcontentloaded")
     check("after logout, / redirects to /login", page.url.startswith(BASE + "/login"), page.url)
 

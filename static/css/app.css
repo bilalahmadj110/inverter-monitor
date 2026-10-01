@@ -648,6 +648,7 @@ details > summary:hover { color: var(--text); }
 .stat-item .label { font-size: 10.5px; }
 .stat-item .value { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 14px; }
 .stat-item.energy .value { color: var(--accent); }
+.data-table td:first-child { white-space: nowrap; }
 .data-table td.status-good { color: var(--ok); }
 .data-table td.status-warning { color: var(--warn); }
 .data-table td.status-error { color: var(--danger); }
@@ -655,7 +656,7 @@ details > summary:hover { color: var(--text); }
 @keyframes flash { 0% { color: var(--accent); } 100% { color: inherit; } }
 .pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0 0; }
 .pagination-info { font-size: 12.5px; color: var(--text-3); }
-.pagination-controls { display: flex; align-items: center; gap: 4px; }
+.pagination-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; max-width: 100%; }
 .pagination-btn, .page-number { min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; display: inline-grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--line); }
 .pagination-btn:hover, .page-number:hover { background: var(--surface-3); color: var(--text); }
 .pagination-btn:disabled { opacity: 0.4; cursor: not-allowed; }
