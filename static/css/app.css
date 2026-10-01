@@ -237,7 +237,7 @@ b, strong { font-weight: 700; }
 @keyframes ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 35%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
 .page-title { margin: 4px 0 0; font-size: clamp(24px, 3.4vw, 32px); font-weight: 800; letter-spacing: -0.025em; line-height: 1.1; }
 .page-sub { margin: 6px 0 0; color: var(--text-2); font-size: 14px; }
-.head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 
 /* ---------- pills, chips, banners --------------------------------------------------- */
 .pill {
@@ -715,6 +715,8 @@ details > summary:hover { color: var(--text); }
 @media (max-width: 640px) {
     :root { --gutter: 16px; }
     .page-head { padding: 20px 0 14px; }
+    .head-actions { width: 100%; }
+    .tabs { width: 100%; }
     .grid-2 { grid-template-columns: 1fr; }
     .card { padding: 16px; }
     .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
