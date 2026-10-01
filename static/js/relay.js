@@ -113,7 +113,7 @@
                     this.connected = true;
                     this._fire('connect');
                     this.deviceOnline = !!msg.device_online;
-                    if (!msg.device_online) this._offline(msg);
+                    if (msg.device_online) this._prime(msg); else this._offline(msg);
                     this._fire('relay_hello', msg);
                     break;
                 case 'inverter_update':
@@ -129,6 +129,15 @@
                 default:
                     break;
             }
+        }
+
+        // The Pi only starts pushing once the relay tells it a viewer arrived, so the first live
+        // frame lands a second or two after hello. Until then show the snapshot the Pi stored
+        // (at most a few minutes old) rather than a page full of zeros.
+        _prime(msg) {
+            const snap = msg.snapshot || {};
+            if (snap.stats) this._fire('stats_update', snap.stats);
+            if (snap.status && snap.status.metrics) this._fire('inverter_update', snap.status);
         }
 
         _offline(msg) {
