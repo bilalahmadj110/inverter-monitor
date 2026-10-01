@@ -238,6 +238,7 @@ b, strong { font-weight: 700; }
 .page-title { margin: 4px 0 0; font-size: clamp(24px, 3.4vw, 32px); font-weight: 800; letter-spacing: -0.025em; line-height: 1.1; }
 .page-sub { margin: 6px 0 0; color: var(--text-2); font-size: 14px; }
 .head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.head-actions .pill { white-space: normal; text-align: left; }   /* long offline messages wrap on phones */
 
 /* ---------- pills, chips, banners --------------------------------------------------- */
 .pill {
