@@ -87,6 +87,10 @@ jobs:
         run: |
           .venv/bin/pip install --quiet --upgrade pip
           .venv/bin/pip install --quiet -r requirements.txt
+          # The MCP server (mcp_server.py) has its own venv; keep it current when it is set up.
+          if [ -x .venv-mcp/bin/pip ]; then
+            .venv-mcp/bin/pip install --quiet -r requirements-mcp.txt
+          fi
 
       - name: Restart services
         run: |
@@ -94,6 +98,10 @@ jobs:
           # The AWS relay (aws_relay.py) runs the checked-out code too; restart it when installed.
           if systemctl list-unit-files inverter-relay.service --no-legend | grep -q inverter-relay; then
             sudo /bin/systemctl restart inverter-relay.service
+          fi
+          # So does the MCP server (mcp_server.py); restart it when installed.
+          if systemctl list-unit-files inverter-mcp.service --no-legend | grep -q inverter-mcp; then
+            sudo /bin/systemctl restart inverter-mcp.service
           fi
 
       - name: Verify service is running

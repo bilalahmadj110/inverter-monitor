@@ -140,9 +140,27 @@ async with httpx2.AsyncClient(headers={"Authorization": "Bearer <token>"},
         print((await client.call_tool("get_live_status")).structured_content["summary"])
 ```
 
-claude.ai custom connectors need a public HTTPS URL; that means a tunnel (ngrok / cloudflared) in front of
-port 8765. Give the connector the secret-URL form, `https://<tunnel-host>/<INVERTER_MCP_TOKEN>/mcp`, with no
-OAuth settings; the token in the path is what keeps strangers out.
+## claude.ai and other hosts away from the LAN (public HTTPS URL)
+
+claude.ai custom connectors need a public HTTPS URL. `deploy/ngrok-mcp.service` runs an ngrok tunnel on the
+Pi from the account's reserved domain to port 8765:
+
+```bash
+sudo cp deploy/ngrok-mcp.service /etc/systemd/system/ && sudo systemctl enable --now ngrok-mcp
+curl https://unmangled-apollo-baculine.ngrok-free.dev/healthz
+```
+
+In claude.ai go to Settings → Connectors → Add custom connector and paste the secret-URL form, leaving the
+OAuth fields empty:
+
+```
+https://unmangled-apollo-baculine.ngrok-free.dev/<INVERTER_MCP_TOKEN>/mcp
+```
+
+The token in the path is what keeps strangers out, so treat that URL like a password. Hosts that can send
+headers (Claude Code, Claude Desktop, SDK clients) use `https://unmangled-apollo-baculine.ngrok-free.dev/mcp`
+with `Authorization: Bearer <INVERTER_MCP_TOKEN>`. CI restarts `inverter-mcp.service` on every deploy and
+updates its venv from `requirements-mcp.txt`; the tunnel unit needs no restart.
 
 ## Tests
 

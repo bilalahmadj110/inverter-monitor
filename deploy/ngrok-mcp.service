@@ -1,0 +1,20 @@
+# Public HTTPS entry to the MCP server, for claude.ai custom connectors and hosts away from the LAN.
+# Reuses the ngrok account's reserved domain that fronted the dashboard before the AWS relay took over
+# (ngrok-tunnel.service, now disabled). The token in INVERTER_MCP_TOKEN is still required on every request.
+#   sudo cp deploy/ngrok-mcp.service /etc/systemd/system/ && sudo systemctl enable --now ngrok-mcp
+[Unit]
+Description=ngrok tunnel for the inverter MCP server
+After=network-online.target inverter-mcp.service
+Wants=network-online.target inverter-mcp.service
+
+[Service]
+Type=simple
+User=bilal
+ExecStart=/usr/local/bin/ngrok http --url=unmangled-apollo-baculine.ngrok-free.dev 8765 --log=stdout --log-format=logfmt
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
