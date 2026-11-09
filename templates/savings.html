@@ -172,8 +172,8 @@
                 <summary><span class="chev"><i class="fas fa-chevron-right"></i></span>Check this tariff against real bills <span class="pill" id="tariff-check-pill">—</span></summary>
                 <p class="note small" style="margin-top:8px">Every closed cycle with a real bill amount is re-billed with the configuration above. Tune FPA, surcharges and fixed charges until the error is small. Every savings figure on this page rests on it.</p>
                 <div class="table-wrap">
-                    <table class="table compact">
-                        <thead><tr><th>Cycle</th><th class="num">Units</th><th class="num">Actual bill</th><th class="num">This tariff</th><th class="num">Error</th></tr></thead>
+                    <table class="table compact matrix">
+                        <thead><tr><th>Cycle</th><th class="num" data-series="grid">Units</th><th class="num" data-series="money">Actual bill</th><th class="num" data-series="info">This tariff</th><th class="num" data-series="warn">Error</th></tr></thead>
                         <tbody id="tariff-check-body"></tbody>
                     </table>
                 </div>
@@ -198,8 +198,8 @@
         <section class="card" style="margin-top:18px">
             <div class="card-h"><h2 class="card-title"><i class="fas fa-clock-rotate-left"></i>Savings by billing cycle</h2></div>
             <div class="table-wrap">
-                <table class="table">
-                    <thead><tr><th>Cycle</th><th class="num">Solar (kWh)</th><th class="num">Grid (kWh)</th><th class="num">Load (kWh)</th><th class="num">Saved (PKR)</th></tr></thead>
+                <table class="table matrix">
+                    <thead><tr><th>Cycle</th><th class="num" data-series="solar">Solar (kWh)</th><th class="num" data-series="grid">Grid (kWh)</th><th class="num" data-series="load">Load (kWh)</th><th class="num" data-series="ok">Saved (PKR)</th></tr></thead>
                     <tbody id="month-history"></tbody>
                 </table>
             </div>

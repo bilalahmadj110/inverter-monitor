@@ -1,6 +1,7 @@
 // Savings page: pulls /savings/data, renders KPIs + month detail + projection,
 // edits tariff config, runs the AI Q&A box, and computes what-if bills.
 // Single-file vanilla JS so it boots without a build step on the Pi.
+/* global UI */
 
 (function () {
     'use strict';
@@ -175,12 +176,19 @@
         tbody.innerHTML = months.slice().reverse().map(m => `
             <tr>
                 <td><b>${m.month}</b></td>
-                <td class="num c-solar">${fmtKWh(m.solar_kwh)}</td>
-                <td class="num c-grid">${fmtKWh(m.grid_kwh)}</td>
-                <td class="num c-load">${fmtKWh(m.load_kwh)}</td>
-                <td class="num tone-ok"><b>Rs ${fmtPKR(m.savings_pkr)}</b></td>
+                <td class="num">${fmtKWh(m.solar_kwh)}</td>
+                <td class="num">${fmtKWh(m.grid_kwh)}</td>
+                <td class="num">${fmtKWh(m.load_kwh)}</td>
+                <td class="num">Rs ${fmtPKR(m.savings_pkr)}</td>
             </tr>
         `).join('');
+        const sum = (key) => months.reduce((acc, m) => acc + (Number(m[key]) || 0), 0);
+        UI.matrix(tbody.closest('table'), {
+            totals: [`Total · ${months.length} cycle${months.length === 1 ? '' : 's'}`, fmtKWh(sum('solar_kwh')), fmtKWh(sum('grid_kwh')),
+                     fmtKWh(sum('load_kwh')), `Rs ${fmtPKR(sum('savings_pkr'))}`],
+            footer: { left: `Grouped by billing cycle · ${months[months.length - 1].month} → ${months[0].month}`,
+                      right: `Showing all ${months.length} rows` },
+        });
     }
 
     function renderTariffCheck(tc) {
@@ -207,6 +215,13 @@
         }).join('');
         const mae = tc.mean_abs_error_pct;
         const bias = tc.bias_pct;
+        const sum = (key) => rows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0);
+        UI.matrix(body.closest('table'), {
+            totals: [`Total · ${rows.length} cycle${rows.length === 1 ? '' : 's'}`, fmtKWh(sum('units')), `Rs ${fmtPKR(sum('actual_pkr'))}`,
+                     `Rs ${fmtPKR(sum('model_pkr'))}`, `${mae}% avg`],
+            footer: { left: 'Closed cycles with a real bill amount · re-billed with the tariff above',
+                      right: `Showing all ${rows.length} rows` },
+        });
         pill.className = 'pill ' + (mae <= 5 ? 'ok' : mae <= 15 ? 'warn' : 'danger');
         pill.textContent = `avg error ${mae}% · bias ${bias > 0 ? '+' : ''}${bias}%`;
     }

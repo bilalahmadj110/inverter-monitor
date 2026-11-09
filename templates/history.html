@@ -125,8 +125,8 @@
             <div class="card">
                 <div class="card-h"><h2 class="card-title"><i class="fas fa-plug-circle-xmark"></i>Outage list</h2></div>
                 <div class="table-wrap">
-                    <table class="table">
-                        <thead><tr><th>Start</th><th>End</th><th class="num">Duration</th></tr></thead>
+                    <table class="table matrix">
+                        <thead><tr><th>Start</th><th>End</th><th class="num" data-series="warn">Duration</th></tr></thead>
                         <tbody id="out-list"><tr><td colspan="3" class="empty">No outages</td></tr></tbody>
                     </table>
                 </div>
@@ -164,8 +164,8 @@
             <div class="card">
                 <div class="card-h"><h2 class="card-title"><i class="fas fa-satellite-dish"></i>Gap list</h2></div>
                 <div class="table-wrap">
-                    <table class="table">
-                        <thead><tr><th>Start</th><th>End</th><th class="num">Duration</th></tr></thead>
+                    <table class="table matrix">
+                        <thead><tr><th>Start</th><th>End</th><th class="num" data-series="info">Duration</th></tr></thead>
                         <tbody id="gap-list"><tr><td colspan="3" class="empty">No reader outages</td></tr></tbody>
                     </table>
                 </div>
@@ -235,7 +235,12 @@
             return mm ? `${h}h ${mm}m` : `${h}h`;
         }
         function fmtTime(ts) { return new Date(ts * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); }
-        const rowHTML = (start, end, dur) => `<tr><td>${fmtTime(start)}</td><td>${fmtTime(end)}</td><td class="num">${fmtDuration(dur)}</td></tr>`;
+        const rowHTML = (start, end, dur) => `<tr><td>${fmtTime(start)}</td><td>${fmtTime(end)}</td><td class="num" data-v="${dur}">${fmtDuration(dur)}</td></tr>`;
+        // Totals row + caption for the outage / gap lists (UI.matrix also tints the duration pills).
+        const finishList = (list, noun, from, to, count, totalSeconds) => UI.matrix(list.closest('table'), {
+            totals: count ? [`Total · ${count} ${noun}${count === 1 ? '' : 's'}`, null, fmtDuration(Math.round(totalSeconds || 0))] : null,
+            footer: { left: `Grouped by event · ${from} → ${to}`, right: count ? `Showing all ${count} rows` : 'Showing 0 rows' },
+        });
         const emptyHTML = (text) => `<tr><td colspan="3" class="empty">${text}</td></tr>`;
 
         // Tabs
@@ -493,10 +498,12 @@
                 const list = document.getElementById('out-list');
                 if (!data.outages || data.outages.length === 0) {
                     list.innerHTML = emptyHTML('No grid outages in this range');
+                    finishList(list, 'outage', from, to, 0, 0);
                     showStatus('empty', 'No outages found', 4000);
                     return;
                 }
                 list.innerHTML = data.outages.map((o) => rowHTML(o.start, o.end, o.duration_seconds)).join('');
+                finishList(list, 'outage', from, to, data.outages.length, data.total_down_seconds);
             }).catch(() => {});
         }
         function setOutRange(days) {
@@ -530,10 +537,12 @@
                 const list = document.getElementById('gap-list');
                 if (!data.gaps || data.gaps.length === 0) {
                     list.innerHTML = emptyHTML('No reader outages in this range');
+                    finishList(list, 'gap', from, to, 0, 0);
                     showStatus('empty', 'No reader outages found', 4000);
                     return;
                 }
                 list.innerHTML = data.gaps.map((g) => rowHTML(g.start, g.end, g.duration_seconds)).join('');
+                finishList(list, 'gap', from, to, data.gaps.length, data.total_down_seconds);
             }).catch(() => {});
         }
         function setGapRange(days) {

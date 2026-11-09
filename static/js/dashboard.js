@@ -1,3 +1,4 @@
+/* global UI */
 class InverterDashboard {
     constructor() {
         this.socket = io();
@@ -279,41 +280,35 @@ class InverterDashboard {
     updateTable(data) {
         const tbody = document.getElementById('data-table-body');
         
+        const table = tbody.closest('table');
         if (data.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="empty">No data available</td></tr>';
+            UI.matrix(table, { totals: null });
             return;
         }
         
         tbody.innerHTML = data.map(row => `
             <tr>
                 <td>${row.timestamp_formatted}</td>
-                <td class="${this.getStatusClass(row.solar_power, 'solar')}">${row.solar_power}</td>
-                <td class="${this.getStatusClass(row.grid_voltage, 'grid')}">${row.grid_voltage}</td>
-                <td class="${this.getStatusClass(row.battery_percentage, 'battery')}">${row.battery_percentage}%</td>
-                <td class="${this.getStatusClass(row.load_power, 'load')}">${row.load_power}</td>
-                <td class="${this.getStatusClass(row.temperature, 'temp')}">${row.temperature == null ? '—' : row.temperature}</td>
-                <td>${row.duration_ms}ms</td>
+                <td class="num">${row.solar_power}</td>
+                <td class="num">${row.grid_voltage}</td>
+                <td class="num">${row.battery_percentage}%</td>
+                <td class="num">${row.load_power}</td>
+                <td class="num">${row.temperature == null ? '—' : row.temperature}</td>
+                <td class="num">${row.duration_ms}ms</td>
             </tr>
         `).join('');
-    }
-
-    getStatusClass(value, type) {
-        // No value (e.g. temperature has no per-reading column) → no status colour.
-        if (value == null) return '';
-        switch (type) {
-            case 'solar':
-                return value > 100 ? 'status-good' : value > 0 ? 'status-warning' : 'status-error';
-            case 'grid':
-                return value > 200 && value < 250 ? 'status-good' : 'status-warning';
-            case 'battery':
-                return value > 50 ? 'status-good' : value > 20 ? 'status-warning' : 'status-error';
-            case 'load':
-                return value > 0 ? 'status-good' : 'status-error';
-            case 'temp':
-                return value < 50 ? 'status-good' : value < 60 ? 'status-warning' : 'status-error';
-            default:
-                return '';
-        }
+        // Pills shaded by value within the page (UI.matrix) and a page-average row underneath.
+        const avg = (pick) => {
+            const xs = data.map(pick).filter((v) => v != null && v !== '').map(Number).filter(Number.isFinite);
+            return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+        };
+        const fmt = (v, digits = 0, unit = '') => (v == null ? '—' : v.toFixed(digits) + unit);
+        UI.matrix(table, {
+            totals: [`Average · ${data.length} readings on this page`, fmt(avg(r => r.solar_power)), fmt(avg(r => r.grid_voltage), 1),
+                     fmt(avg(r => r.battery_percentage), 0, '%'), fmt(avg(r => r.load_power)), fmt(avg(r => r.temperature), 1),
+                     fmt(avg(r => r.duration_ms), 0, 'ms')],
+        });
     }
 
     updatePagination() {

@@ -2,6 +2,7 @@
 
    No frameworks; vanilla DOM. CSRF token read from <meta name="csrf-token">.
    Handles: cycle picker, meter-reading editor, bootstrap form. */
+/* global UI */
 
 (function () {
   'use strict';
@@ -218,6 +219,18 @@
     }).join('');
     tbody.querySelectorAll('.record-actual').forEach((btn) => {
       btn.addEventListener('click', () => openActualEditor(btn.closest('tr')));
+    });
+    const rows = payload.history || [];
+    const sum = (pick) => rows.reduce((acc, r) => acc + (Number(pick(r)) || 0), 0);
+    const withMeter = rows.filter((r) => r.units_actual != null).length;
+    UI.matrix(tbody.closest('table'), {
+      totals: rows.length ? [
+        `Total · ${rows.length} cycle${rows.length === 1 ? '' : 's'}`,
+        fmtKwh(sum((r) => r.units_actual)), fmtKwh(sum((r) => r.units_estimated)),
+        fmtPkr(Math.round(sum((r) => r.bill_amount))), fmtPkr(Math.round(sum((r) => r.paid))), null,
+      ] : null,
+      footer: { left: `Rows are billing cycles · meter figure recorded for ${withMeter} of ${rows.length}`,
+                right: rows.length ? `Showing all ${rows.length} rows` : 'Showing 0 rows' },
     });
     const cal = payload.calibration || {};
     const line = $('calibration-line');

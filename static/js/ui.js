@@ -68,6 +68,63 @@
         setInterval(tick, 1000);
     }
 
+    // ---- matrix tables -------------------------------------------------------------------
+    // Give a filled .table the "matrix" look: every numeric <td class="num"> becomes a pill tinted
+    // with its column's series colour (data-series on the <th>), darker the larger the value is
+    // within that column; zeros and blanks stay quiet. opts.totals puts a bold row in <tfoot>
+    // (one entry per column, null for blank); opts.footer = {left, right} writes the caption
+    // under the table. Call it after filling <tbody>; re-calling re-renders totals and caption.
+    // A <td> may carry data-v="<number>" when its text is not a plain number (durations).
+    const parseNum = (text) => {
+        const m = String(text).replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+        return m ? parseFloat(m[0]) : NaN;
+    };
+    function matrix(table, opts = {}) {
+        if (!table) return;
+        table.classList.add('matrix');
+        const ths = Array.from(table.querySelectorAll('thead th'));
+        const rows = Array.from(table.querySelectorAll('tbody tr')).filter((tr) => !tr.querySelector('td.empty'));
+        const cols = ths.map(() => []);
+        rows.forEach((tr) => Array.from(tr.children).forEach((td, i) => {
+            if (!cols[i] || !td.classList.contains('num') || td.querySelector('.cell-pill, input, button')) return;
+            const v = td.dataset.v != null ? parseFloat(td.dataset.v) : parseNum(td.textContent);
+            cols[i].push({ td, v });
+        }));
+        cols.forEach((cells, i) => {
+            const series = ths[i] && ths[i].dataset.series;
+            const max = Math.max(0, ...cells.filter((c) => Number.isFinite(c.v)).map((c) => Math.abs(c.v)));
+            cells.forEach(({ td, v }) => {
+                if (series) td.dataset.series = series;
+                const finite = Number.isFinite(v);
+                const pill = document.createElement('span');
+                pill.className = 'cell-pill' + (!finite ? ' na' : v === 0 ? ' zero' : '');
+                pill.style.setProperty('--heat', (finite && max > 0 ? Math.abs(v) / max : 0).toFixed(3));
+                while (td.firstChild) pill.appendChild(td.firstChild);
+                td.appendChild(pill);
+            });
+        });
+        let tfoot = table.querySelector('tfoot');
+        if (opts.totals) {
+            if (!tfoot) tfoot = table.createTFoot();
+            tfoot.innerHTML = '<tr>' + ths.map((th, i) => {
+                const val = opts.totals[i];
+                return `<td${th.classList.contains('num') ? ' class="num"' : ''}>${val == null ? '' : val}</td>`;
+            }).join('') + '</tr>';
+        } else if (tfoot) {
+            tfoot.remove();
+        }
+        const wrap = table.closest('.table-wrap') || table;
+        let foot = wrap.nextElementSibling;
+        if (!(foot && foot.classList.contains('table-foot'))) {
+            if (!opts.footer) return;
+            foot = document.createElement('div');
+            foot.className = 'table-foot';
+            wrap.insertAdjacentElement('afterend', foot);
+        }
+        if (opts.footer) foot.innerHTML = `<span>${opts.footer.left || ''}</span><span>${opts.footer.right || ''}</span>`;
+        else foot.remove();
+    }
+
     applyChartDefaults();
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('[data-theme-toggle]').forEach((b) => {
@@ -77,5 +134,5 @@
         startClock();
     });
 
-    window.UI = { cssVar, palette, withAlpha, theme, setTheme, chartTheme, onTheme: (fn) => listeners.push(fn) };
+    window.UI = { cssVar, palette, withAlpha, theme, setTheme, chartTheme, matrix, onTheme: (fn) => listeners.push(fn) };
 })();
