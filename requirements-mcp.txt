@@ -1,0 +1,4 @@
+# The MCP server (mcp_server.py) only. Kept apart from requirements.txt because the SDK needs
+# pydantic >= 2.12 while the dashboard pins 2.11.5 for mppsolar; give the MCP server its own venv:
+#   uv venv --python 3.12 .venv-mcp && uv pip install --python .venv-mcp/bin/python -r requirements-mcp.txt
+mcp>=2.3,<3

@@ -1,0 +1,25 @@
+# Inverter MCP server over Streamable HTTP, for chatbots / remote MCP hosts on the LAN.
+# Talks to the dashboard on localhost; never opens /dev/hidraw0 itself.
+#
+#   uv venv --python 3.11 /home/bilal/Desktop/Inverter/.venv-mcp
+#   uv pip install --python /home/bilal/Desktop/Inverter/.venv-mcp/bin/python -r requirements-mcp.txt
+#   install -m 600 deploy/inverter-mcp.env.example ~/.config/inverter-mcp.env   # then fill it in
+#   sudo cp deploy/inverter-mcp.service /etc/systemd/system/ && sudo systemctl enable --now inverter-mcp
+[Unit]
+Description=Inverter MCP server (Streamable HTTP)
+After=network.target myflaskapp.service
+Wants=myflaskapp.service
+
+[Service]
+User=bilal
+WorkingDirectory=/home/bilal/Desktop/Inverter
+EnvironmentFile=/home/bilal/.config/inverter-mcp.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/bilal/Desktop/Inverter/.venv-mcp/bin/python /home/bilal/Desktop/Inverter/mcp_server.py --transport streamable-http --host 0.0.0.0 --port 8765
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -83,10 +83,20 @@ app.py                  # Flask + Socket.IO entrypoint, REST + WS routes
 continuous_reader.py    # Background reader: QPIGS fast loop + QMOD/QPIWS slow loop
 inverter_status.py      # mpp-solar subprocess wrapper, parsing, warning decoding
 power_stats.py          # Persistence + daily/monthly/yearly aggregates
+mcp_server.py           # MCP server (Claude / chatbot access), talks to app.py over HTTP; see MCP.md
+lib/app_client.py       # Logged-in HTTP client for app.py used by the MCP server
 templates/              # Dashboard HTML (solar_flow, classic dashboard)
 static/                 # CSS, JS, icons
 requirements.txt
 ```
+
+## Control it from Claude or a chatbot (MCP server)
+
+`mcp_server.py` exposes the dashboard to any Model Context Protocol host: live status, settings, energy
+history, savings and the FESCO bill forecast as read tools, plus `set_output_priority` (SBU / Solar first /
+Utility first) and `set_charger_priority` as write tools. It talks to `app.py` over HTTP as a logged-in client
+and never opens the HID device, so it can run on the Pi or on a laptop. Setup for Claude Code, Claude Desktop
+and HTTP chatbots, the safety switches and the full tool list are in [MCP.md](MCP.md).
 
 ## Permanent URL through an AWS relay (optional)
 
