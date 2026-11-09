@@ -376,3 +376,28 @@ def test_relay_handle_mcp_replays_locally_and_frames_the_reply(monkeypatch):
     assert seen["headers"] == {"authorization": "Bearer t", "content-type": "application/json"}
     assert len(sent) >= 2 and all(f["action"] == "mcp_reply" and f["id"] == "r1" and "type" not in f for f in sent)
     assert json.loads(gzip.decompress(base64.b64decode("".join(f["data"] for f in sent))))["ok"] is True
+
+
+# ---- set_secrets: the script the Pi runs for mcp-setup -------------------------------------------
+
+def test_pi_mcp_env_script_is_valid_python(tmp_path, monkeypatch):
+    """Regression: the template was a plain f-string, so "\\n" reached the Pi as a line break inside a
+    string literal and the remote python3 died with SyntaxError. Generate it, compile it, and run its
+    file-editing part against a scratch env file."""
+    spec = importlib.util.spec_from_file_location("set_secrets", ROOT / "aws" / "set_secrets.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    script = mod.pi_mcp_env_script("tok-ABC_123")
+    compile(script, "<pi>", "exec")                       # the bug made this raise
+    assert 's.rstrip("\\n")' in script and "\nINVERTER" not in script.split("line =")[1].split("\n")[0]
+    env = tmp_path / "inverter-mcp.env"
+    env.write_text("INVERTER_URL=http://127.0.0.1:5000\nINVERTER_MCP_TOKEN=old\n")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr("os.path.expanduser", lambda p: str(env) if p.endswith("inverter-mcp.env") else p)
+    # Run everything except the systemctl restart.
+    body = script.split("r = subprocess.run")[0]
+    exec(compile(body, "<pi>", "exec"), {"__name__": "__pi__"})
+    text = env.read_text()
+    assert "INVERTER_MCP_TOKEN=tok-ABC_123\n" in text and "INVERTER_MCP_TOKEN=old" not in text
+    assert "INVERTER_MCP_JSON_RESPONSE=1\n" in text and "INVERTER_MCP_STATELESS=1\n" in text
+    assert oct(env.stat().st_mode & 0o777) == "0o600"

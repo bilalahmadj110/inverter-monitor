@@ -97,6 +97,30 @@ def cmd_pi_mcp_env(a) -> None:
     sys.stdout.write(f"INVERTER_MCP_TOKEN={token}\n")
 
 
+def pi_mcp_env_script(token: str) -> str:
+    """The Python the Pi runs to adopt the MCP token: rewrite INVERTER_MCP_TOKEN in
+    ~/.config/inverter-mcp.env, make sure the two relay flags are present, restart the service.
+    A raw string, so the escape sequences reach the Pi as written instead of as line breaks."""
+    return rf"""
+import os, re, subprocess
+line = "INVERTER_MCP_TOKEN=" + {token!r}
+p = os.path.expanduser("~/.config/inverter-mcp.env")
+s = open(p).read() if os.path.exists(p) else ""
+if re.search(r"^INVERTER_MCP_TOKEN=", s, flags=re.M):
+    s = re.sub(r"^INVERTER_MCP_TOKEN=.*$", lambda _m: line, s, flags=re.M)
+else:
+    s = s.rstrip("\n") + "\n" + line + "\n"
+for extra in ("INVERTER_MCP_JSON_RESPONSE=1", "INVERTER_MCP_STATELESS=1"):
+    if not re.search("^" + extra.split("=")[0] + "=", s, flags=re.M):
+        s = s.rstrip("\n") + "\n" + extra + "\n"
+with open(p, "w") as f:
+    f.write(s)
+os.chmod(p, 0o600)
+r = subprocess.run(["sudo", "systemctl", "restart", "inverter-mcp.service"])
+print("pi: env updated; inverter-mcp restart", "ok" if r.returncode == 0 else f"failed ({{r.returncode}})")
+"""
+
+
 def cmd_mcp_setup(a) -> None:
     """Everything the relay's /mcp route needs in one go: an mcp_token in SSM (created if missing), the same
     token plus the relay flags in the Pi's ~/.config/inverter-mcp.env, a restart of inverter-mcp.service,
@@ -105,25 +129,8 @@ def cmd_mcp_setup(a) -> None:
         put("mcp_token", secrets.token_urlsafe(24), True, a)
         print(f"created {a.prefix}/mcp_token")
     token = get("mcp_token", a)
-    remote = f"""
-import os, re, subprocess
-line = "INVERTER_MCP_TOKEN=" + {token!r}
-p = os.path.expanduser("~/.config/inverter-mcp.env")
-s = open(p).read() if os.path.exists(p) else ""
-if re.search(r"^INVERTER_MCP_TOKEN=", s, flags=re.M):
-    s = re.sub(r"^INVERTER_MCP_TOKEN=.*$", line, s, flags=re.M)
-else:
-    s = s.rstrip("\n") + "\n" + line + "\n"
-for extra in ("INVERTER_MCP_JSON_RESPONSE=1", "INVERTER_MCP_STATELESS=1"):
-    if not re.search("^" + extra.split("=")[0] + "=", s, flags=re.M):
-        s = s.rstrip("\n") + "\n" + extra + "\n"
-open(p, "w").write(s)
-os.chmod(p, 0o600)
-r = subprocess.run(["sudo", "systemctl", "restart", "inverter-mcp.service"])
-print("pi: env updated; inverter-mcp restart", "ok" if r.returncode == 0 else f"failed ({{r.returncode}})")
-"""
     cmd = ["ssh", "-o", "BatchMode=yes", *(["-i", os.path.expanduser(a.key)] if a.key else []), a.pi, "python3", "-"]
-    r = subprocess.run(cmd, input=remote, text=True)
+    r = subprocess.run(cmd, input=pi_mcp_env_script(token), text=True)
     if r.returncode != 0:
         raise SystemExit(f"ssh to {a.pi} failed ({r.returncode}); the SSM token is in place, re-run to retry the Pi step")
     print(f"claude.ai connector URL: {stack_output('HttpUrl', a)}/{token}/mcp")
