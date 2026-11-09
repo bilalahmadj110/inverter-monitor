@@ -431,3 +431,18 @@ async def test_http_wrapper_accepts_header_or_path_token(server):
     rec = _Recorder()
     await app({"type": "lifespan", "path": ""}, None, rec)
     assert rec.messages[0]["status"] == 200
+
+
+def test_run_http_passes_relay_flags_and_wraps_with_the_token_check(server, monkeypatch):
+    mod, _ = server
+    captured = {}
+    monkeypatch.setattr(mod.mcp, "streamable_http_app", lambda **kw: captured.update(kw) or "SDK-APP")
+    import uvicorn
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: captured.update(run=kw, app=app))
+    mod.run_http("0.0.0.0", 8765, "tok", [], json_response=True, stateless=True)
+    assert captured["json_response"] is True and captured["stateless_http"] is True
+    assert captured["transport_security"] is None and captured["host"] == "0.0.0.0"
+    assert captured["run"]["proxy_headers"] is True and captured["run"]["port"] == 8765
+    assert callable(captured["app"]) and captured["app"] != "SDK-APP"   # wrapped by _bearer_app
+    with pytest.raises(SystemExit):
+        mod.run_http("0.0.0.0", 8765, "", [])                            # no token on a LAN address is refused

@@ -246,3 +246,133 @@ def test_local_app_refreshes_expired_csrf_token(monkeypatch):
 class _Headers(dict):
     def get_all(self, name):
         return []
+
+
+# ---- MCP over the relay -----------------------------------------------------------------------
+
+class _FakeTable:
+    """Just the DynamoDB calls the MCP path makes, in a dict."""
+
+    def __init__(self):
+        self.items = {}
+
+    def get_item(self, Key, **_):
+        return {"Item": self.items[Key["pk"]]} if Key["pk"] in self.items else {}
+
+    def put_item(self, Item):
+        self.items[Item["pk"]] = Item
+
+    def delete_item(self, Key):
+        self.items.pop(Key["pk"], None)
+
+    def update_item(self, **_):
+        pass
+
+
+@pytest.fixture
+def mcp_relay(handler, monkeypatch):
+    import aws_relay
+    table = _FakeTable()
+    table.items["device"] = {"pk": "device", "connection_id": "dev-conn"}
+    monkeypatch.setattr(handler, "_ddb", table)
+    monkeypatch.setattr(handler, "param", lambda name, ttl=300.0: {"mcp_token": "tok-123"}[name])
+    monkeypatch.setattr(handler, "MCP_POLL_S", 0.0)
+    posted = []
+
+    def fake_post(conn_id, obj):
+        posted.append((conn_id, obj))
+        if obj.get("type") == "mcp":
+            # The Pi answers through the WebSocket; emulate its frames arriving on the $default route.
+            body = json.dumps({"jsonrpc": "2.0", "id": 1,
+                               "result": {"echo": obj["body"], "auth": obj["headers"].get("authorization"),
+                                          "pad": "x" * 200_000}}).encode()       # forces several parts
+            for frame in aws_relay.encode_reply(obj["id"], 200, "application/json", body, "gzip+b64"):
+                frame["action"] = "mcp_reply"
+                frame.pop("type", None)
+                r = handler.handle_ws({"requestContext": {"connectionId": "dev-conn", "eventType": "MESSAGE"},
+                                       "body": json.dumps(frame)})
+                assert r["statusCode"] == 200
+        return True
+
+    monkeypatch.setattr(handler, "_post", fake_post)
+    return handler, table, posted
+
+
+def test_mcp_requires_the_token(mcp_relay):
+    handler, _table, posted = mcp_relay
+    assert handler.handle_http(_http_event("POST", "/mcp", body="{}"))["statusCode"] == 401
+    assert handler.handle_http(_http_event("POST", "/wrong/mcp", body="{}"))["statusCode"] == 401
+    r = handler.handle_http(_http_event("POST", "/mcp", body="{}", headers={"authorization": "Bearer nope"}))
+    assert r["statusCode"] == 401 and r["headers"]["WWW-Authenticate"].startswith("Bearer")
+    assert posted == []
+
+
+def test_mcp_roundtrip_in_header_and_path_forms(mcp_relay):
+    handler, table, posted = mcp_relay
+    msg = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+    for ev in (_http_event("POST", "/mcp", body=msg, headers={"authorization": "Bearer tok-123",
+                                                               "content-type": "application/json"}),
+               _http_event("POST", "/tok-123/mcp", body=msg)):
+        r = handler.handle_http(ev)
+        assert r["statusCode"] == 200 and r["headers"]["Content-Type"] == "application/json"
+        body = json.loads(base64.b64decode(r["body"]))
+        assert body["result"]["echo"] == msg
+        assert body["result"]["auth"] == "Bearer tok-123"          # the Pi's MCP server checks it again
+    assert len(posted) == 2 and all(conn == "dev-conn" and obj["type"] == "mcp" for conn, obj in posted)
+    assert posted[0][1]["headers"]["content-type"] == "application/json"
+    assert not [k for k in table.items if k.startswith("mcp#")]    # reply rows are cleaned up
+
+
+def test_mcp_other_methods_and_pi_offline(mcp_relay):
+    handler, table, _posted = mcp_relay
+    hdr = {"authorization": "Bearer tok-123"}
+    assert handler.handle_http(_http_event("GET", "/mcp", headers=hdr))["statusCode"] == 405
+    assert handler.handle_http(_http_event("DELETE", "/mcp", headers=hdr))["statusCode"] == 200
+    table.items["device"] = {"pk": "device"}
+    r = handler.handle_http(_http_event("POST", "/mcp", body="{}", headers=hdr))
+    assert r["statusCode"] == 503 and "not connected" in json.loads(r["body"])["error"]["message"]
+
+
+def test_mcp_times_out_when_the_pi_is_silent(mcp_relay, monkeypatch):
+    handler, _table, _posted = mcp_relay
+    monkeypatch.setattr(handler, "_post", lambda conn, obj: True)
+    monkeypatch.setattr(handler, "MCP_WAIT_S", 0.05)
+    r = handler.handle_http(_http_event("POST", "/mcp", body="{}", headers={"authorization": "Bearer tok-123"}))
+    assert r["statusCode"] == 504
+
+
+def test_mcp_without_a_configured_token_is_not_found(handler, monkeypatch):
+    from botocore.exceptions import ClientError
+
+    def missing(name, ttl=300.0):
+        raise ClientError({"Error": {"Code": "ParameterNotFound", "Message": "x"}}, "GetParameter")
+
+    monkeypatch.setattr(handler, "param", missing)
+    assert handler.handle_http(_http_event("POST", "/mcp", body="{}"))["statusCode"] == 404
+
+
+def test_relay_handle_mcp_replays_locally_and_frames_the_reply(monkeypatch):
+    import asyncio
+    import aws_relay
+    relay = aws_relay.Relay.__new__(aws_relay.Relay)      # skip the boto3 client in __init__
+    sent = []
+
+    class _WS:
+        async def send(self, text):
+            sent.append(json.loads(text))
+
+    relay.ws = _WS()
+    seen = {}
+
+    def fake_request(headers, body):
+        seen["headers"], seen["body"] = headers, body
+        return 200, "application/json", json.dumps({"ok": True, "n": list(range(40_000))}).encode()
+
+    monkeypatch.setattr(aws_relay, "mcp_request", fake_request)
+    asyncio.run(relay.handle_mcp({"id": "r1", "method": "POST", "body": '{"jsonrpc":"2.0"}',
+                                  "headers": {"authorization": "Bearer t", "content-type": "application/json",
+                                              "x-forwarded-for": "1.1.1.1"}}))
+    assert seen["body"] == '{"jsonrpc":"2.0"}'
+    assert seen["headers"] == {"authorization": "Bearer t", "content-type": "application/json"}
+    assert len(sent) >= 2 and all(f["action"] == "mcp_reply" and f["id"] == "r1" and "type" not in f for f in sent)
+    assert json.loads(gzip.decompress(base64.b64decode("".join(f["data"] for f in sent))))["ok"] is True

@@ -20,6 +20,8 @@ Configuration comes from the environment, or from KEY=VALUE lines in ~/.config/i
   INVERTER_MCP_TOKEN                token every HTTP request must carry, as "Authorization: Bearer"
                                     or as the URL prefix /<token>/mcp; required unless bound to loopback
   INVERTER_MCP_ALLOWED_HOSTS        comma-separated Host header values accepted over HTTP
+  INVERTER_MCP_JSON_RESPONSE=1      HTTP: one JSON body per POST instead of an SSE stream (AWS relay)
+  INVERTER_MCP_STATELESS=1          HTTP: no per-client sessions (AWS relay)
 
 Run:
   python mcp_server.py                                   # stdio, for Claude Code / Claude Desktop
@@ -809,7 +811,11 @@ def _bearer_app(app, token: str):
     return wrapper
 
 
-def run_http(host: str, port: int, token: str, allowed_hosts: list[str]) -> None:
+def run_http(host: str, port: int, token: str, allowed_hosts: list[str], *, json_response: bool = False,
+             stateless: bool = False) -> None:
+    """Serve over Streamable HTTP. `json_response` answers each POST with one JSON body instead of an
+    SSE stream and `stateless` drops per-client session tracking; both are needed behind the AWS relay,
+    which carries one request and one reply at a time and keeps no session state."""
     import uvicorn
     from mcp.server.transport_security import TransportSecuritySettings
 
@@ -819,11 +825,13 @@ def run_http(host: str, port: int, token: str, allowed_hosts: list[str]) -> None
             raise SystemExit("refusing to listen on a non-loopback address without INVERTER_MCP_TOKEN")
         log.warning("no INVERTER_MCP_TOKEN set; accepting unauthenticated requests on loopback only")
     security = TransportSecuritySettings(allowed_hosts=allowed_hosts, allowed_origins=[]) if allowed_hosts else None
-    app = mcp.streamable_http_app(streamable_http_path="/mcp", transport_security=security, host=host)
+    app = mcp.streamable_http_app(streamable_http_path="/mcp", transport_security=security, host=host,
+                                  json_response=json_response, stateless_http=stateless)
     if token:
         app = _bearer_app(app, token)
-    log.info("inverter MCP listening on http://%s:%d/mcp (%s); dashboard %s; writes %s",
-             host, port, "bearer token required" if token else "no auth", BASE_URL,
+    log.info("inverter MCP listening on http://%s:%d/mcp (%s; %s, %s); dashboard %s; writes %s",
+             host, port, "bearer token required" if token else "no auth",
+             "json responses" if json_response else "SSE responses", "stateless" if stateless else "sessions", BASE_URL,
              "disabled" if READ_ONLY else ("priorities + parameters" if ALLOW_PARAM_WRITES else "priorities only"))
     # Behind ngrok / a TLS proxy the request arrives as http; trusting X-Forwarded-* keeps any URL the
     # app builds on https. Auth is the token, so trusting those headers from any peer costs nothing.
@@ -857,6 +865,10 @@ def main(argv=None) -> int:
                         default=os.environ.get("INVERTER_MCP_TRANSPORT", "stdio"))
     parser.add_argument("--host", default=os.environ.get("INVERTER_MCP_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("INVERTER_MCP_PORT", "8765")))
+    parser.add_argument("--json-response", action="store_true", default=_flag("INVERTER_MCP_JSON_RESPONSE"),
+                        help="HTTP only: answer each POST with one JSON body instead of an SSE stream (AWS relay)")
+    parser.add_argument("--stateless", action="store_true", default=_flag("INVERTER_MCP_STATELESS"),
+                        help="HTTP only: no per-client session tracking (AWS relay)")
     parser.add_argument("--check", action="store_true", help="log in, read once, print a summary and exit")
     args = parser.parse_args(argv)
     if args.check:
@@ -865,7 +877,8 @@ def main(argv=None) -> int:
         mcp.run("stdio")
     else:
         allowed = [h.strip() for h in os.environ.get("INVERTER_MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
-        run_http(args.host, args.port, os.environ.get("INVERTER_MCP_TOKEN", "").strip(), allowed)
+        run_http(args.host, args.port, os.environ.get("INVERTER_MCP_TOKEN", "").strip(), allowed,
+                 json_response=args.json_response, stateless=args.stateless)
     return 0
 
 

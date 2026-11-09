@@ -95,8 +95,9 @@ requirements.txt
 `mcp_server.py` exposes the dashboard to any Model Context Protocol host: live status, settings, energy
 history, savings and the FESCO bill forecast as read tools, plus `set_output_priority` (SBU / Solar first /
 Utility first) and `set_charger_priority` as write tools. It talks to `app.py` over HTTP as a logged-in client
-and never opens the HID device, so it can run on the Pi or on a laptop. Setup for Claude Code, Claude Desktop
-and HTTP chatbots, the safety switches and the full tool list are in [MCP.md](MCP.md).
+and never opens the HID device, so it can run on the Pi or on a laptop. The AWS relay forwards `POST /mcp`
+to it, so the permanent URL works for claude.ai too. Setup for Claude Code, Claude Desktop and HTTP chatbots,
+the safety switches and the full tool list are in [MCP.md](MCP.md).
 
 ## Permanent URL through an AWS relay (optional)
 

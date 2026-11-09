@@ -3,8 +3,10 @@
 One function behind two API Gateway v2 APIs:
 
   HTTP API   - login, the dashboard pages (pre-rendered copies of the Flask templates)
-               and static assets. Session = signed cookie. Nothing else is served over
-               HTTP: every data call the pages make is tunnelled over the WebSocket.
+               and static assets. Session = signed cookie. The only data served over HTTP
+               is /mcp (and /<token>/mcp): a Model Context Protocol request is forwarded
+               to the Pi over the WebSocket and the reply is waited for through the table.
+               Every data call the pages make is tunnelled over the WebSocket.
   WebSocket  - the Raspberry Pi connects once as the "device" (shared secret); browsers
                connect as "viewers" (short-lived token minted for a valid session).
                Viewer -> device: request/reply RPC frames that the Pi answers by calling
@@ -18,11 +20,13 @@ optional last-known snapshot (a few KB) so the page can say when the Pi was last
 Secrets come from SSM Parameter Store and are cached for the life of the container.
 """
 import base64
+import gzip
 import hashlib
 import hmac
 import json
 import mimetypes
 import os
+import re
 import secrets
 import time
 import urllib.parse
@@ -43,6 +47,15 @@ WS_TOKEN_TTL_S = 10 * 60
 ROW_TTL_S = 3 * 3600          # API Gateway closes sockets after 2 h; rows outlive that a little
 LOGIN_MAX_PER_MINUTE = 5
 LOGIN_MAX_PER_HOUR = 30
+# MCP (Model Context Protocol) over the relay: POST /mcp or POST /<token>/mcp is forwarded to the Pi's
+# MCP server (mcp_server.py) through the device WebSocket. The Pi answers with `mcp_reply` frames that
+# the $default route parks in the table, where the waiting HTTP invocation polls for them. HTTP API
+# integrations time out at 30 s, so the wait stays under that and the function timeout is 29 s.
+MCP_PATH = re.compile(r"^/(?:(?P<token>[^/]+)/)?mcp/?$")
+MCP_WAIT_S = 26.0
+MCP_POLL_S = 0.15
+MCP_ROW_TTL_S = 120
+MCP_FORWARD_HEADERS = ("content-type", "accept", "mcp-protocol-version", "mcp-session-id")
 # The Lambda image lacks /etc/mime.types entries for web fonts.
 mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("font/woff", ".woff")
@@ -210,6 +223,89 @@ def _page(name: str, error: str | None = None) -> str:
     return html
 
 
+# ---- MCP over the relay -----------------------------------------------------------------
+
+def _mcp_token() -> str | None:
+    try:
+        return param("mcp_token")
+    except ClientError:
+        return None
+
+
+def _mcp_authorized(event: dict, path_token: str | None, expected: str) -> bool:
+    auth = (event.get("headers") or {}).get("authorization") or ""
+    scheme, _, credential = auth.partition(" ")
+    if scheme.lower() == "bearer" and hmac.compare_digest(credential.strip(), expected):
+        return True
+    return bool(path_token) and hmac.compare_digest(path_token, expected)
+
+
+def _mcp_error(status: int, message: str) -> dict:
+    return _json(status, {"jsonrpc": "2.0", "id": None, "error": {"code": -32000, "message": message}})
+
+
+def _await_mcp_reply(rid: str):
+    """Poll the table for the Pi's reply parts. Returns (status, content_type, body_bytes), or None
+    when the Pi did not answer within MCP_WAIT_S."""
+    deadline = time.time() + MCP_WAIT_S
+    parts: dict[int, dict] = {}
+    total = None
+    while time.time() < deadline:
+        time.sleep(MCP_POLL_S)
+        wanted = [0] if total is None else [i for i in range(total) if i not in parts]
+        for i in wanted:
+            item = _ddb.get_item(Key={"pk": f"mcp#{rid}#{i}"}, ConsistentRead=True).get("Item")
+            if item:
+                parts[i] = item
+                total = int(item.get("parts", 1))
+        if total is not None and len(parts) == total:
+            break
+    else:
+        return None
+    for i in range(total):
+        _ddb.delete_item(Key={"pk": f"mcp#{rid}#{i}"})
+    first = parts[0]
+    data = "".join(str(parts[i].get("data") or "") for i in range(total))
+    body = gzip.decompress(base64.b64decode(data)) if first.get("enc") == "gzip+b64" else data.encode("utf-8")
+    return int(first.get("status", 502)), str(first.get("ctype") or "application/json"), body
+
+
+def handle_mcp(event: dict, method: str, path_token: str | None) -> dict:
+    """Relay one MCP HTTP request to the Pi. The token is checked here (header or path form) and
+    forwarded as a bearer header, so the Pi's MCP server checks it again."""
+    expected = _mcp_token()
+    if not expected:
+        return _json(404, {"error": "not found", "hint": "MCP relay not configured (no mcp_token parameter)"})
+    if not _mcp_authorized(event, path_token, expected):
+        print(json.dumps({"event": "mcp_unauthorized", "ip": _client_ip(event)}))
+        return _resp(401, json.dumps({"error": "invalid_token", "error_description": "a valid token is required"}),
+                     "application/json", headers={"WWW-Authenticate": 'Bearer error="invalid_token"'})
+    if method == "GET":
+        return _resp(405, "", headers={"Allow": "POST, DELETE"})   # no server-initiated stream through the relay
+    if method == "DELETE":
+        return _resp(200, "")                                       # stateless server: nothing to end
+    if method != "POST":
+        return _resp(405, "method not allowed", headers={"Allow": "POST, DELETE"})
+    dev = _device()
+    if not (dev and dev.get("connection_id")):
+        return _mcp_error(503, "Raspberry Pi is not connected")
+    body = event.get("body") or ""
+    if event.get("isBase64Encoded"):
+        body = base64.b64decode(body).decode("utf-8", "replace")
+    headers_in = event.get("headers") or {}
+    fwd_headers = {k: headers_in[k] for k in MCP_FORWARD_HEADERS if k in headers_in}
+    fwd_headers["authorization"] = f"Bearer {expected}"
+    rid = secrets.token_urlsafe(12)
+    if not _post(dev["connection_id"], {"type": "mcp", "id": rid, "method": "POST", "headers": fwd_headers, "body": body}):
+        return _mcp_error(503, "Raspberry Pi dropped the connection")
+    reply = _await_mcp_reply(rid)
+    if reply is None:
+        print(json.dumps({"event": "mcp_timeout", "id": rid}))
+        return _mcp_error(504, "the Raspberry Pi did not answer in time")
+    status, ctype, data = reply
+    return _resp(status, data, ctype, headers={"Cache-Control": "no-store"})
+
+
 def handle_http(event: dict) -> dict:
     method = event["requestContext"]["http"]["method"]
     path = event.get("rawPath") or "/"
@@ -217,6 +313,10 @@ def handle_http(event: dict) -> dict:
 
     if path == "/healthz":
         return _json(200, {"ok": True, "version": APP_VERSION, "relay": True})
+
+    mcp = MCP_PATH.match(path)
+    if mcp:
+        return handle_mcp(event, method, mcp.group("token"))
 
     if path.startswith("/static/"):
         rel = urllib.parse.unquote(path[len("/static/"):])
@@ -422,6 +522,14 @@ def handle_ws(event: dict) -> dict:
         return {"statusCode": 200}
     if action == "viewers?":
         _notify_device(dev)
+        return {"statusCode": 200}
+    if action == "mcp_reply":          # answer to a relayed MCP request; an HTTP invocation is polling for it
+        rid = str(msg.get("id") or "")
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", rid):
+            _ddb.put_item(Item={"pk": f"mcp#{rid}#{int(msg.get('part') or 0)}", "status": int(msg.get("status") or 502),
+                                "ctype": str(msg.get("ctype") or "application/json")[:120],
+                                "enc": str(msg.get("enc") or "identity"), "parts": int(msg.get("parts") or 1),
+                                "data": str(msg.get("data") or ""), "ttl": now + MCP_ROW_TTL_S})
         return {"statusCode": 200}
     if action == "rpc_reply":          # fallback path if the Pi cannot post directly
         _post(msg.get("to", ""), {k: v for k, v in msg.items() if k not in ("action", "to")} | {"type": "rpc"})

@@ -7,8 +7,12 @@ argv, so they do not land in shell history or process listings.
   # admin login for the AWS-hosted pages (password on stdin)
   echo -n 'the-password' | python3 aws/set_secrets.py set-password --username admin
 
-  # create token_secret / device_secret if they do not exist yet
+  # create token_secret / device_secret / mcp_token if they do not exist yet
   python3 aws/set_secrets.py ensure
+
+  # MCP over the relay: token in SSM + on the Pi, service restart, and the claude.ai URL in one go
+  python3 aws/set_secrets.py mcp-setup --pi bilal@192.168.18.130
+  python3 aws/set_secrets.py mcp-url          # print the URL again later
 
   # print the Pi's env file (local app password on stdin). --create-key mints the
   # access key for the inverter-pi-relay IAM user; pipe the output straight to the Pi.
@@ -20,6 +24,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import secrets
 import subprocess
 import sys
@@ -70,17 +75,66 @@ def cmd_set_password(a) -> None:
 
 
 def cmd_ensure(a) -> None:
-    for name in ("token_secret", "device_secret"):
+    # mcp_token is shorter because it also travels inside a URL (/<token>/mcp).
+    for name, length in (("token_secret", 48), ("device_secret", 48), ("mcp_token", 24)):
         if get(name, a) is None:
-            put(name, secrets.token_urlsafe(48), True, a)
+            put(name, secrets.token_urlsafe(length), True, a)
             print(f"created {a.prefix}/{name}")
         else:
             print(f"{a.prefix}/{name} already exists")
 
 
 def cmd_rotate(a) -> None:
-    put(a.name, secrets.token_urlsafe(48), True, a)
+    put(a.name, secrets.token_urlsafe(24 if a.name == "mcp_token" else 48), True, a)
     print(f"rotated {a.prefix}/{a.name}")
+
+
+def cmd_pi_mcp_env(a) -> None:
+    """Print the INVERTER_MCP_TOKEN line for the Pi's ~/.config/inverter-mcp.env; pipe it, don't paste it."""
+    token = get("mcp_token", a)
+    if not token:
+        raise SystemExit("mcp_token missing; run `ensure` first")
+    sys.stdout.write(f"INVERTER_MCP_TOKEN={token}\n")
+
+
+def cmd_mcp_setup(a) -> None:
+    """Everything the relay's /mcp route needs in one go: an mcp_token in SSM (created if missing), the same
+    token plus the relay flags in the Pi's ~/.config/inverter-mcp.env, a restart of inverter-mcp.service,
+    and the URL to paste into claude.ai. The token reaches the Pi only inside the SSH stdin stream."""
+    if get("mcp_token", a) is None:
+        put("mcp_token", secrets.token_urlsafe(24), True, a)
+        print(f"created {a.prefix}/mcp_token")
+    token = get("mcp_token", a)
+    remote = f"""
+import os, re, subprocess
+line = "INVERTER_MCP_TOKEN=" + {token!r}
+p = os.path.expanduser("~/.config/inverter-mcp.env")
+s = open(p).read() if os.path.exists(p) else ""
+if re.search(r"^INVERTER_MCP_TOKEN=", s, flags=re.M):
+    s = re.sub(r"^INVERTER_MCP_TOKEN=.*$", line, s, flags=re.M)
+else:
+    s = s.rstrip("\n") + "\n" + line + "\n"
+for extra in ("INVERTER_MCP_JSON_RESPONSE=1", "INVERTER_MCP_STATELESS=1"):
+    if not re.search("^" + extra.split("=")[0] + "=", s, flags=re.M):
+        s = s.rstrip("\n") + "\n" + extra + "\n"
+open(p, "w").write(s)
+os.chmod(p, 0o600)
+r = subprocess.run(["sudo", "systemctl", "restart", "inverter-mcp.service"])
+print("pi: env updated; inverter-mcp restart", "ok" if r.returncode == 0 else f"failed ({{r.returncode}})")
+"""
+    cmd = ["ssh", "-o", "BatchMode=yes", *(["-i", os.path.expanduser(a.key)] if a.key else []), a.pi, "python3", "-"]
+    r = subprocess.run(cmd, input=remote, text=True)
+    if r.returncode != 0:
+        raise SystemExit(f"ssh to {a.pi} failed ({r.returncode}); the SSM token is in place, re-run to retry the Pi step")
+    print(f"claude.ai connector URL: {stack_output('HttpUrl', a)}/{token}/mcp")
+
+
+def cmd_mcp_url(a) -> None:
+    """Print the URL to paste into claude.ai (Settings > Connectors > Add custom connector)."""
+    token = get("mcp_token", a)
+    if not token:
+        raise SystemExit("mcp_token missing; run `ensure` first")
+    print(f"{stack_output('HttpUrl', a)}/{token}/mcp")
 
 
 def cmd_pi_env(a) -> None:
@@ -121,7 +175,10 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("set-password"); s.add_argument("--username", default="admin"); s.set_defaults(fn=cmd_set_password)
     s = sub.add_parser("ensure"); s.set_defaults(fn=cmd_ensure)
-    s = sub.add_parser("rotate"); s.add_argument("name", choices=["token_secret", "device_secret"]); s.set_defaults(fn=cmd_rotate)
+    s = sub.add_parser("rotate"); s.add_argument("name", choices=["token_secret", "device_secret", "mcp_token"]); s.set_defaults(fn=cmd_rotate)
+    s = sub.add_parser("pi-mcp-env"); s.set_defaults(fn=cmd_pi_mcp_env)
+    s = sub.add_parser("mcp-url"); s.set_defaults(fn=cmd_mcp_url)
+    s = sub.add_parser("mcp-setup"); s.add_argument("--pi", default="bilal@192.168.18.130"); s.add_argument("--key", default="~/.ssh/id_ed25519"); s.set_defaults(fn=cmd_mcp_setup)
     s = sub.add_parser("pi-env"); s.add_argument("--username", default="admin"); s.add_argument("--create-key", action="store_true"); s.set_defaults(fn=cmd_pi_env)
     a = p.parse_args()
     a.fn(a)

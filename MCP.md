@@ -140,27 +140,54 @@ async with httpx2.AsyncClient(headers={"Authorization": "Bearer <token>"},
         print((await client.call_tool("get_live_status")).structured_content["summary"])
 ```
 
-## claude.ai and other hosts away from the LAN (public HTTPS URL)
+## claude.ai and other hosts away from the LAN (the AWS relay URL)
 
-claude.ai custom connectors need a public HTTPS URL. `deploy/ngrok-mcp.service` runs an ngrok tunnel on the
-Pi from the account's reserved domain to port 8765:
+The dashboard's permanent address, `https://sve57w70a8.execute-api.ap-south-1.amazonaws.com`, also serves
+MCP. The Lambda accepts `POST /mcp` and `POST /<token>/mcp`, checks the token against the `mcp_token`
+parameter in SSM, forwards the request to the Pi over the WebSocket the Pi already keeps open
+(`aws_relay.py` replays it against the local MCP server), and waits for the reply through the DynamoDB
+table. Nothing new listens anywhere; the Pi still only dials out.
+
+```
+claude.ai ──POST /<token>/mcp──► Lambda ──ws frame──► aws_relay.py ──► mcp_server.py :8765 ──► app.py
+          ◄────── JSON reply ─── (table) ◄── mcp_reply ◄──┘
+```
+
+One-time setup:
 
 ```bash
-sudo cp deploy/ngrok-mcp.service /etc/systemd/system/ && sudo systemctl enable --now ngrok-mcp
-curl https://unmangled-apollo-baculine.ngrok-free.dev/healthz
+export AWS_PROFILE=nursepal AWS_REGION=ap-south-1
+PYTHON=.venv-mcp/bin/python aws/deploy.sh                      # Lambda with the /mcp route, 29 s timeout
+python3 aws/set_secrets.py mcp-setup --pi bilal@192.168.18.130  # mcp_token in SSM and on the Pi, restart, prints the URL
 ```
 
-In claude.ai go to Settings → Connectors → Add custom connector and paste the secret-URL form, leaving the
-OAuth fields empty:
+`mcp-setup` creates `/inverter-relay/mcp_token` if missing, writes the same value plus
+`INVERTER_MCP_JSON_RESPONSE=1` and `INVERTER_MCP_STATELESS=1` into the Pi's `~/.config/inverter-mcp.env`,
+restarts `inverter-mcp.service`, and prints the connector URL. It is safe to re-run.
 
-```
-https://unmangled-apollo-baculine.ngrok-free.dev/<INVERTER_MCP_TOKEN>/mcp
+Then print the URL and paste it into claude.ai under Settings → Connectors → Add custom connector, leaving
+the OAuth fields empty:
+
+```bash
+python3 aws/set_secrets.py mcp-url
+# https://sve57w70a8.execute-api.ap-south-1.amazonaws.com/<token>/mcp
 ```
 
-The token in the path is what keeps strangers out, so treat that URL like a password. Hosts that can send
-headers (Claude Code, Claude Desktop, SDK clients) use `https://unmangled-apollo-baculine.ngrok-free.dev/mcp`
-with `Authorization: Bearer <INVERTER_MCP_TOKEN>`. CI restarts `inverter-mcp.service` on every deploy and
-updates its venv from `requirements-mcp.txt`; the tunnel unit needs no restart.
+Treat that URL like a password. Hosts that can send headers (Claude Code, Claude Desktop, SDK clients) use
+`https://sve57w70a8.execute-api.ap-south-1.amazonaws.com/mcp` with `Authorization: Bearer <token>`:
+
+```bash
+claude mcp add --scope user --transport http inverter-aws \
+  https://sve57w70a8.execute-api.ap-south-1.amazonaws.com/mcp --header "Authorization: Bearer <token>"
+```
+
+Each call costs one Lambda invocation that waits for the Pi (under a second of overhead; a priority change
+takes about 6 s end to end). The relay serves only POST: it answers GET with 405 and DELETE with 200, which
+is what a stateless MCP server expects. CI restarts `inverter-mcp.service` and `inverter-relay.service` on
+every deploy and refreshes the MCP venv from `requirements-mcp.txt`.
+
+An ngrok unit (`deploy/ngrok-mcp.service`, reserved domain `unmangled-apollo-baculine.ngrok-free.dev`) is kept
+as a fallback for a direct tunnel to port 8765; it is not enabled.
 
 ## Tests
 

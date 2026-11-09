@@ -14,7 +14,7 @@ Parameters:
   ParamPrefix:
     Type: String
     Default: /inverter-relay
-    Description: SSM Parameter Store prefix holding admin_username, admin_password_hash, token_secret, device_secret.
+    Description: SSM Parameter Store prefix holding admin_username, admin_password_hash, token_secret, device_secret, mcp_token.
 
 Resources:
 
@@ -168,7 +168,8 @@ Resources:
       Architectures: [arm64]
       Handler: handler.lambda_handler
       MemorySize: 256
-      Timeout: 15
+      # An HTTP API integration may wait up to 30 s; an MCP request waits up to 26 s for the Pi.
+      Timeout: 29
       Role: !GetAtt RelayFunctionRole.Arn
       Environment:
         Variables:

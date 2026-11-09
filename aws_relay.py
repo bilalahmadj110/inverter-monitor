@@ -11,10 +11,15 @@ gzipped and chunked to stay under API Gateway's 128 KB frame limit.
 Nothing about the readings leaves the Pi except what a connected viewer asked for, plus a
 few-KB "last seen" snapshot every few minutes so the page can say when the Pi went dark.
 
+MCP requests (Model Context Protocol, for claude.ai and other remote hosts) arrive from the Lambda
+as `mcp` frames and are replayed against the local MCP server (mcp_server.py); the reply goes back
+through the socket as `mcp_reply` frames.
+
 Configuration comes from the environment (see aws/inverter-relay.service):
   RELAY_WS_URL, RELAY_DEVICE_SECRET, RELAY_MGMT_ENDPOINT, AWS_REGION,
   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (execute-api:ManageConnections only),
-  LOCAL_APP_URL (default http://127.0.0.1:5000), LOCAL_APP_USERNAME, LOCAL_APP_PASSWORD.
+  LOCAL_APP_URL (default http://127.0.0.1:5000), LOCAL_APP_USERNAME, LOCAL_APP_PASSWORD,
+  LOCAL_MCP_URL (default http://127.0.0.1:8765/mcp).
 """
 from __future__ import annotations
 
@@ -41,6 +46,12 @@ AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
 LOCAL_APP_URL = os.environ.get("LOCAL_APP_URL", "http://127.0.0.1:5000").rstrip("/")
 LOCAL_USER = os.environ.get("LOCAL_APP_USERNAME", "admin")
 LOCAL_PASS = os.environ.get("LOCAL_APP_PASSWORD", "")
+# MCP requests that reach the Lambda over HTTPS are replayed against the local MCP server
+# (mcp_server.py, deploy/inverter-mcp.service). The Lambda has already checked the token and
+# forwards it as a bearer header, which that server checks again.
+LOCAL_MCP_URL = os.environ.get("LOCAL_MCP_URL", "http://127.0.0.1:8765/mcp")
+MCP_HEADERS = ("content-type", "accept", "mcp-protocol-version", "mcp-session-id", "authorization")
+MCP_TIMEOUT_S = 25
 
 PUSH_INTERVAL_S = float(os.environ.get("PUSH_INTERVAL_S", "1.0"))
 STATS_INTERVAL_S = float(os.environ.get("STATS_INTERVAL_S", "60"))
@@ -88,6 +99,18 @@ def encode_reply(rpc_id, status: int, ctype: str, body: bytes, accept_enc: str,
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+def mcp_request(headers: dict, body: str):
+    """POST one MCP message to the local MCP server. Returns (status, content_type, body_bytes)."""
+    req_headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    req_headers.update(headers)
+    req = urllib.request.Request(LOCAL_MCP_URL, data=body.encode("utf-8"), method="POST", headers=req_headers)
+    try:
+        resp = urllib.request.build_opener(_NoRedirect()).open(req, timeout=MCP_TIMEOUT_S)
+        return resp.status, resp.headers.get("Content-Type", "application/json"), resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("Content-Type", "application/json"), e.read()
 
 
 class LocalApp:
@@ -259,6 +282,8 @@ class Relay:
                 self.viewers = new
         elif t == "rpc":
             asyncio.create_task(self.handle_rpc(msg))
+        elif t == "mcp":
+            asyncio.create_task(self.handle_mcp(msg))
         elif t == "pong":
             pass
 
@@ -285,6 +310,26 @@ class Relay:
             if not await self.post(vid, frame):
                 break
         await self._report_gone()
+
+    async def handle_mcp(self, msg: dict):
+        """One MCP request that arrived at the Lambda over HTTPS: replay it against the local MCP
+        server and send the reply back through the socket as `mcp_reply` frames, which the Lambda
+        parks in DynamoDB for the HTTP invocation that is waiting for them."""
+        rid = msg.get("id")
+        if not rid or self.ws is None:
+            return
+        headers = {k: v for k, v in (msg.get("headers") or {}).items() if k.lower() in MCP_HEADERS}
+        try:
+            status, ctype, body = await asyncio.to_thread(mcp_request, headers, msg.get("body") or "")
+        except Exception as e:
+            log.warning("mcp request failed: %s", e)
+            status, ctype, body = 502, "application/json", json.dumps({"error": str(e)[:200]}).encode()
+        for frame in encode_reply(rid, status, ctype, body, "gzip+b64"):
+            frame["action"] = "mcp_reply"
+            frame.pop("type", None)
+            if self.ws is None:
+                return
+            await self.ws.send(json.dumps(frame))
 
     # ---- periodic tasks -----------------------------------------------------------------------
     async def pusher(self):
