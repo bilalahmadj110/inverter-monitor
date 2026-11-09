@@ -833,9 +833,11 @@ def run_http(host: str, port: int, token: str, allowed_hosts: list[str], *, json
              host, port, "bearer token required" if token else "no auth",
              "json responses" if json_response else "SSE responses", "stateless" if stateless else "sessions", BASE_URL,
              "disabled" if READ_ONLY else ("priorities + parameters" if ALLOW_PARAM_WRITES else "priorities only"))
-    # Behind ngrok / a TLS proxy the request arrives as http; trusting X-Forwarded-* keeps any URL the
-    # app builds on https. Auth is the token, so trusting those headers from any peer costs nothing.
-    uvicorn.run(app, host=host, port=port, log_level="info", proxy_headers=True, forwarded_allow_ips="*")
+    # Behind a TLS proxy the request arrives as http; trusting X-Forwarded-* keeps any URL the app builds
+    # on https. Auth is the token, so trusting those headers from any peer costs nothing. uvicorn's access
+    # log is off because the secret-URL form puts the token in the request path, which it would print.
+    uvicorn.run(app, host=host, port=port, log_level="info", proxy_headers=True, forwarded_allow_ips="*",
+                access_log=False)
 
 
 # ---- entry point --------------------------------------------------------------------------------

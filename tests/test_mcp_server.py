@@ -443,6 +443,7 @@ def test_run_http_passes_relay_flags_and_wraps_with_the_token_check(server, monk
     assert captured["json_response"] is True and captured["stateless_http"] is True
     assert captured["transport_security"] is None and captured["host"] == "0.0.0.0"
     assert captured["run"]["proxy_headers"] is True and captured["run"]["port"] == 8765
+    assert captured["run"]["access_log"] is False      # the token can sit in the path; never log it
     assert callable(captured["app"]) and captured["app"] != "SDK-APP"   # wrapped by _bearer_app
     with pytest.raises(SystemExit):
         mod.run_http("0.0.0.0", 8765, "", [])                            # no token on a LAN address is refused
